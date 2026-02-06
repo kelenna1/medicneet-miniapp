@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 """
 MedicNEET Telegram Mini App - Cash Prize Quiz
 Backend: FastAPI + SQLite + Daily Email Export
