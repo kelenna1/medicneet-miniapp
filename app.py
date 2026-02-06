@@ -146,7 +146,7 @@ async def send_winner_to_channel(round_id, winner_name, time_ms, photo_path=None
 
 async def send_new_round_to_channel():
     """Post new question alert with quiz button to channel"""
-    text = f"""🚨 <b>NEW QUESTION LIVE!</b>
+    text = f"""🚨 <b>NEET 2026 - High Level Biology Question Posted!</b>
 
 💰 ₹{CASH_PRIZE} for the fastest correct answer
 ⏱ Prize window: {PRIZE_WINDOW_MINUTES} minute only!
@@ -154,7 +154,7 @@ async def send_new_round_to_channel():
 
 👇 Answer now!"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
-    button = {"inline_keyboard": [[{"text": "🧠 Play Quiz - Win ₹50!", "url": "https://quiz.medicneet.com/"}]]}
+   button = {"inline_keyboard": [[{"text": "🧠 Play Quiz - Win ₹50!", "url": "https://t.me/NEETquizmoneyprizebot"}]]}
     async with httpx.AsyncClient() as client:
         await client.post(f"{url}/sendMessage", json={"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML", "reply_markup": button})
 
