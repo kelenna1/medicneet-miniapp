@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@your_channel")
 QUESTION_INTERVAL_HOURS = int(os.getenv("QUESTION_INTERVAL_HOURS", "4"))
-PRIZE_WINDOW_MINUTES = int(os.getenv("PRIZE_WINDOW_MINUTES", "1"))  # Prize only for first X minutes
+PRIZE_WINDOW_MINUTES = int(os.getenv("PRIZE_WINDOW_MINUTES", "2"))  # Prize only for first X minutes
 CASH_PRIZE = int(os.getenv("CASH_PRIZE", "50"))
 DB_PATH = os.getenv("DB_PATH", "medicneet.db")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://yourdomain.com")
@@ -220,11 +220,11 @@ async def round_manager():
     while True:
         try:
             conn = get_db(); c = conn.cursor(); now = datetime.utcnow(); now_str = now.isoformat()
-            c.execute("SELECT r.id, r.winner_name, r.winner_time_ms, r.winner_photo_path FROM rounds r WHERE r.ends_at <= ? AND r.announced = 0 AND r.winner_user_id IS NOT NULL", (now_str,))
+            c.execute("SELECT r.id, r.winner_name, r.winner_time_ms, r.winner_photo_path FROM rounds r WHERE r.prize_ends_at <= ? AND r.announced = 0 AND r.winner_user_id IS NOT NULL", (now_str,))
             for rnd in c.fetchall():
                 await send_winner_to_channel(rnd["id"], rnd["winner_name"], rnd["winner_time_ms"], rnd["winner_photo_path"])
                 c.execute("UPDATE rounds SET announced = 1 WHERE id = ?", (rnd["id"],))
-            c.execute("UPDATE rounds SET announced = 1 WHERE ends_at <= ? AND announced = 0 AND winner_user_id IS NULL", (now_str,))
+            c.execute("UPDATE rounds SET announced = 1 WHERE prize_ends_at <= ? AND announced = 0 AND winner_user_id IS NULL", (now_str,))
             conn.commit(); conn.close()
             # Check for new round and announce if created
             rnd, is_new = get_or_create_current_round(return_is_new=True)
