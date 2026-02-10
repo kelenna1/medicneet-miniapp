@@ -175,43 +175,6 @@
             margin-bottom: 20px
         }
 
-        .question-block {
-            background: var(--bg2);
-            border: 2px solid var(--border);
-            border-radius: 18px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 3px 0 var(--border)
-        }
-
-        .question-number {
-            display: inline-block;
-            background: var(--green);
-            color: #fff;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 800;
-            margin-bottom: 10px
-        }
-
-        .question-block.answered {
-            border-color: var(--green);
-            background: var(--green-lt)
-        }
-
-        .question-block.correct {
-            border-color: var(--green);
-            background: var(--green-lt);
-            box-shadow: 0 3px 0 var(--green-dk)
-        }
-
-        .question-block.incorrect {
-            border-color: var(--red);
-            background: var(--red-lt);
-            box-shadow: 0 3px 0 var(--red)
-        }
-
         .stopwatch {
             text-align: center;
             margin-bottom: 16px
@@ -1273,8 +1236,26 @@
                 <div class="stopwatch-value" id="stopwatch">0.00</div>
                 <div class="stopwatch-label">Your time (seconds)</div>
             </div>
-            <div id="questionsContainer"></div>
-            <button class="duo-btn" id="submitBtn" onclick="submitAllAnswers()" disabled style="margin-top:20px">Submit All Answers</button>
+            <div class="question-chapter" id="qChapter"></div>
+            <div class="question-text" id="qText"></div>
+            <div class="options" id="optionsContainer">
+                <button class="option-btn" data-answer="A" onclick="selectAnswer(this)">
+                    <div class="opt-letter">A</div>
+                    <div id="optA"></div>
+                </button>
+                <button class="option-btn" data-answer="B" onclick="selectAnswer(this)">
+                    <div class="opt-letter">B</div>
+                    <div id="optB"></div>
+                </button>
+                <button class="option-btn" data-answer="C" onclick="selectAnswer(this)">
+                    <div class="opt-letter">C</div>
+                    <div id="optC"></div>
+                </button>
+                <button class="option-btn" data-answer="D" onclick="selectAnswer(this)">
+                    <div class="opt-letter">D</div>
+                    <div id="optD"></div>
+                </button>
+            </div>
         </div>
 
         <div class="screen" id="resultScreen">
@@ -1361,7 +1342,6 @@
         const userId = String(user.id), userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Anonymous', initData = tg?.initData || '';
         const APP_STATUS = '{{ app_status }}', PLAYSTORE_LINK = '{{ playstore_link }}';
         let currentRound = null, stopwatchInterval = null, stopwatchStart = null, roundTimerInterval = null, hasAttempted = false, selectedPhoto = null;
-        let userAnswers = [null, null, null, null];  // Track answers for 4 questions
         const API = '';
 
         // ─── CTA BUILDER (Launching Soon vs Live) ─────────────────────
@@ -1410,59 +1390,20 @@
 
         async function loadCurrentRound() {
             try {
-                const res = await fetch(`${API}/api/current-round`);
-                if (!res.ok) { showScreen('waitingScreen'); buildCTA('waitCTA'); return }
-                const data = await res.json();
-                currentRound = data;
-                hasAttempted = false;
-                userAnswers = [null, null, null, null];
-
+                const res = await fetch(`${API}/api/current-round`); if (!res.ok) { showScreen('waitingScreen'); buildCTA('waitCTA'); return }
+                const data = await res.json(); currentRound = data; hasAttempted = false;
                 document.getElementById('statAttempts').textContent = data.stats.attempts;
                 document.getElementById('statFastest').textContent = data.stats.fastest_time_ms ? (data.stats.fastest_time_ms / 1000).toFixed(1) + 's' : '--';
                 startPrizeTimer(data.prize_ends_at, data.ends_at);
-
-                // Build 4 questions UI
-                const container = document.getElementById('questionsContainer');
-                container.innerHTML = '';
-
-                data.questions.forEach((q, idx) => {
-                    const qBlock = document.createElement('div');
-                    qBlock.className = 'question-block';
-                    qBlock.id = `question-${idx}`;
-                    qBlock.innerHTML = `
-                        <div class="question-number">Question ${idx + 1}</div>
-                        <div class="question-chapter">${q.chapter || 'NEET Biology'}</div>
-                        <div class="question-text">${q.text}</div>
-                        <div class="options">
-                            <button class="option-btn" data-question="${idx}" data-answer="A" onclick="selectQuestionAnswer(${idx}, 'A', this)">
-                                <div class="opt-letter">A</div>
-                                <div>${q.option_a}</div>
-                            </button>
-                            <button class="option-btn" data-question="${idx}" data-answer="B" onclick="selectQuestionAnswer(${idx}, 'B', this)">
-                                <div class="opt-letter">B</div>
-                                <div>${q.option_b}</div>
-                            </button>
-                            <button class="option-btn" data-question="${idx}" data-answer="C" onclick="selectQuestionAnswer(${idx}, 'C', this)">
-                                <div class="opt-letter">C</div>
-                                <div>${q.option_c}</div>
-                            </button>
-                            <button class="option-btn" data-question="${idx}" data-answer="D" onclick="selectQuestionAnswer(${idx}, 'D', this)">
-                                <div class="opt-letter">D</div>
-                                <div>${q.option_d}</div>
-                            </button>
-                        </div>
-                    `;
-                    container.appendChild(qBlock);
-                });
-
-                document.getElementById('submitBtn').disabled = true;
-                showScreen('quizScreen');
-                startStopwatch();
-            } catch (e) {
-                console.error(e);
-                showScreen('waitingScreen');
-                buildCTA('waitCTA');
-            }
+                document.getElementById('qChapter').textContent = data.question.chapter || 'NEET Biology';
+                document.getElementById('qText').textContent = data.question.text;
+                document.getElementById('optA').textContent = data.question.option_a;
+                document.getElementById('optB').textContent = data.question.option_b;
+                document.getElementById('optC').textContent = data.question.option_c;
+                document.getElementById('optD').textContent = data.question.option_d;
+                document.querySelectorAll('.option-btn').forEach(btn => { btn.classList.remove('correct', 'wrong'); btn.style.pointerEvents = 'auto' });
+                showScreen('quizScreen'); startStopwatch()
+            } catch (e) { console.error(e); showScreen('waitingScreen'); buildCTA('waitCTA') }
         }
 
         function startStopwatch() {
@@ -1513,165 +1454,55 @@
             }, 1000);
         }
 
-        function selectQuestionAnswer(questionIdx, answer, btn) {
-            if (hasAttempted) return;
-
-            // Remove selection from other options in this question
-            const questionBlock = document.getElementById(`question-${questionIdx}`);
-            questionBlock.querySelectorAll('.option-btn').forEach(b => {
-                b.classList.remove('selected');
-                b.style.background = 'var(--bg)';
-                b.style.borderColor = 'var(--border)';
-            });
-
-            // Mark this option as selected
-            btn.classList.add('selected');
-            btn.style.background = 'var(--blue-lt)';
-            btn.style.borderColor = 'var(--blue)';
-
-            // Store the answer
-            userAnswers[questionIdx] = answer;
-
-            // Mark question block as answered
-            questionBlock.classList.add('answered');
-
-            // Enable submit button if all 4 questions are answered
-            const allAnswered = userAnswers.every(a => a !== null);
-            document.getElementById('submitBtn').disabled = !allAnswered;
-        }
-
-        async function submitAllAnswers() {
-            if (hasAttempted) return;
-            hasAttempted = true;
-            const tms = stopStopwatch();
-
-            document.getElementById('submitBtn').disabled = true;
+        async function selectAnswer(btn) {
+            if (hasAttempted) return; hasAttempted = true; const tms = stopStopwatch(), answer = btn.dataset.answer;
             document.querySelectorAll('.option-btn').forEach(b => b.style.pointerEvents = 'none');
-
             try {
                 const res = await fetch(`${API}/api/submit`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        round_id: currentRound.round_id,
-                        user_id: userId,
-                        user_name: userName,
-                        answers: userAnswers,
-                        time_ms: tms,
-                        init_data: initData
-                    })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ round_id: currentRound.round_id, user_id: userId, user_name: userName, answer, time_ms: tms, init_data: initData })
                 });
-
-                if (res.status === 400) {
-                    const err = await res.json();
-                    if (err.detail === 'Already attempted') {
-                        showAlreadyAttempted();
-                        return;
-                    }
-                }
-
+                if (res.status === 400) { const err = await res.json(); if (err.detail === 'Already attempted') { showAlreadyAttempted(); return } }
                 const data = await res.json();
-
-                // Show correct/wrong for each question
-                data.results.forEach((isCorrect, idx) => {
-                    const questionBlock = document.getElementById(`question-${idx}`);
-                    questionBlock.classList.add(isCorrect ? 'correct' : 'incorrect');
-
-                    const buttons = questionBlock.querySelectorAll('.option-btn');
-                    buttons.forEach(btn => {
-                        const btnAnswer = btn.dataset.answer;
-                        if (btnAnswer === data.correct_answers[idx]) {
-                            btn.classList.add('correct');
-                        } else if (btnAnswer === userAnswers[idx] && !isCorrect) {
-                            btn.classList.add('wrong');
-                        }
-                    });
-                });
-
-                setTimeout(() => showResult(data, tms), 1200);
-            } catch (e) {
-                console.error(e);
-                hasAttempted = false;
-                document.getElementById('submitBtn').disabled = false;
-                document.querySelectorAll('.option-btn').forEach(b => b.style.pointerEvents = 'auto');
-            }
+                document.querySelectorAll('.option-btn').forEach(b => { if (b.dataset.answer === data.correct_answer) b.classList.add('correct') });
+                if (!data.correct) btn.classList.add('wrong');
+                setTimeout(() => showResult(data, tms), 800)
+            } catch (e) { console.error(e); hasAttempted = false; document.querySelectorAll('.option-btn').forEach(b => b.style.pointerEvents = 'auto') }
         }
 
         function showResult(data, tms) {
-            const ts = (tms / 1000).toFixed(2);
-            const card = document.getElementById('resultCard');
+            const ts = (tms / 1000).toFixed(2); const card = document.getElementById('resultCard');
             const inPrizeWindow = data.prize_window_active !== false;
-            const correctCount = data.results.filter(r => r).length;
-            const allCorrect = data.all_correct;
-
             if (data.is_current_winner && inPrizeWindow) {
-                card.className = 'result-card win';
-                document.getElementById('resultIcon').textContent = '🏆';
-                document.getElementById('resultTitle').textContent = "YOU'RE WINNING!";
-                document.getElementById('resultTitle').className = 'result-title win-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 correctly — fastest time! Claim your ₹50!';
-                document.getElementById('winnerForm').style.display = 'block';
-                document.getElementById('resultTime').style.color = 'var(--green)';
+                card.className = 'result-card win'; document.getElementById('resultIcon').textContent = '🏆';
+                document.getElementById('resultTitle').textContent = "YOU'RE WINNING!"; document.getElementById('resultTitle').className = 'result-title win-text';
+                document.getElementById('resultSub').textContent = 'Fastest correct answer — claim your ₹50!';
+                document.getElementById('winnerForm').style.display = 'block'; document.getElementById('resultTime').style.color = 'var(--green)'
             }
-            else if (allCorrect && inPrizeWindow) {
-                card.className = 'result-card correct';
-                document.getElementById('resultIcon').textContent = '✅';
-                document.getElementById('resultTitle').textContent = 'All Correct!';
-                document.getElementById('resultTitle').className = 'result-title correct-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 — Someone was faster. Try next round!';
-                document.getElementById('winnerForm').style.display = 'none';
-                document.getElementById('resultTime').style.color = 'var(--green-dk)';
+            else if (data.correct && inPrizeWindow) {
+                card.className = 'result-card correct'; document.getElementById('resultIcon').textContent = '✅';
+                document.getElementById('resultTitle').textContent = 'Correct!'; document.getElementById('resultTitle').className = 'result-title correct-text';
+                document.getElementById('resultSub').textContent = 'Someone was faster. Try next round!';
+                document.getElementById('winnerForm').style.display = 'none'; document.getElementById('resultTime').style.color = 'var(--green-dk)'
             }
-            else if (allCorrect && !inPrizeWindow) {
-                card.className = 'result-card correct';
-                document.getElementById('resultIcon').textContent = '✅';
-                document.getElementById('resultTitle').textContent = 'All Correct!';
-                document.getElementById('resultTitle').className = 'result-title correct-text';
-                document.getElementById('resultSub').textContent = 'Practice mode — Solved 4/4! Nice revision!';
-                document.getElementById('winnerForm').style.display = 'none';
-                document.getElementById('resultTime').style.color = 'var(--green-dk)';
+            else if (data.correct && !inPrizeWindow) {
+                card.className = 'result-card correct'; document.getElementById('resultIcon').textContent = '✅';
+                document.getElementById('resultTitle').textContent = 'Correct!'; document.getElementById('resultTitle').className = 'result-title correct-text';
+                document.getElementById('resultSub').textContent = 'Practice mode — prize window ended. Nice revision!';
+                document.getElementById('winnerForm').style.display = 'none'; document.getElementById('resultTime').style.color = 'var(--green-dk)'
             }
             else {
-                card.className = 'result-card wrong';
-                document.getElementById('resultIcon').textContent = '❌';
-                document.getElementById('resultTitle').textContent = `${correctCount}/4 Correct`;
-                document.getElementById('resultTitle').className = 'result-title wrong-text';
-                document.getElementById('resultSub').textContent = inPrizeWindow ? 'Need all 4 correct to win!' : 'Practice mode — Need all 4 correct to win!';
-                document.getElementById('winnerForm').style.display = 'none';
-                document.getElementById('resultTime').style.color = 'var(--txt)';
+                card.className = 'result-card wrong'; document.getElementById('resultIcon').textContent = '❌';
+                document.getElementById('resultTitle').textContent = 'Wrong Answer'; document.getElementById('resultTitle').className = 'result-title wrong-text';
+                document.getElementById('resultSub').textContent = inPrizeWindow ? `Correct answer was ${data.correct_answer}` : `Practice mode — Correct answer was ${data.correct_answer}`;
+                document.getElementById('winnerForm').style.display = 'none'; document.getElementById('resultTime').style.color = 'var(--txt)'
             }
-
             document.getElementById('resultTime').textContent = ts;
-
-            // Show explanations for incorrect answers
-            const expCard = document.getElementById('explanationCard');
-            let hasExplanations = false;
-            let expHTML = '<div class="explanation-header">📖 Explanations</div>';
-
-            data.explanations.forEach((exp, idx) => {
-                if (!data.results[idx] && exp?.trim()) {
-                    hasExplanations = true;
-                    expHTML += `<div style="margin-bottom:12px"><strong>Q${idx + 1}:</strong> Correct answer was ${data.correct_answers[idx]}. ${exp}</div>`;
-                }
-            });
-
-            if (hasExplanations) {
-                expCard.innerHTML = expHTML;
-                expCard.style.display = 'block';
-            } else {
-                expCard.style.display = 'none';
-            }
-
-            buildCTA('appCTA');
-            buildRoundLeaderboard(data.leaderboard);
-
-            if (tg?.HapticFeedback) {
-                if (data.is_current_winner) tg.HapticFeedback.notificationOccurred('success');
-                else if (allCorrect) tg.HapticFeedback.notificationOccurred('warning');
-                else tg.HapticFeedback.notificationOccurred('error');
-            }
-
-            showScreen('resultScreen');
+            if (data.explanation?.trim()) { document.getElementById('explanationText').textContent = data.explanation; document.getElementById('explanationCard').style.display = 'block' }
+            else document.getElementById('explanationCard').style.display = 'none';
+            buildCTA('appCTA'); buildRoundLeaderboard(data.leaderboard);
+            if (tg?.HapticFeedback) { if (data.is_current_winner) tg.HapticFeedback.notificationOccurred('success'); else if (data.correct) tg.HapticFeedback.notificationOccurred('warning'); else tg.HapticFeedback.notificationOccurred('error') }
+            showScreen('resultScreen')
         }
 
         function showAlreadyAttempted() {
