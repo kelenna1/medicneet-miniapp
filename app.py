@@ -132,6 +132,13 @@ def get_or_create_current_round(return_is_new=False):
     c.execute("INSERT INTO rounds (question_id, started_at, ends_at, prize_ends_at) VALUES (?,?,?,?)", (q["id"], started.isoformat(), ends.isoformat(), prize_ends.isoformat()))
     rid = c.lastrowid; conn.commit()
     c.execute("SELECT * FROM rounds WHERE id = ?", (rid,)); r = dict(c.fetchone()); conn.close()
+    # Trigger channel announcement for new round (run in background)
+    import threading
+    def announce():
+        import asyncio
+        asyncio.run(send_new_round_to_channel())
+    threading.Thread(target=announce, daemon=True).start()
+    logger.info(f"📢 New round announced: Round #{rid}")
     return (r, True) if return_is_new else r
 
 async def send_winner_to_channel(round_id, winner_name, time_ms, photo_path=None):
