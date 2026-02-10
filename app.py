@@ -48,13 +48,17 @@ def init_db():
             option_a TEXT NOT NULL, option_b TEXT NOT NULL, option_c TEXT NOT NULL, option_d TEXT NOT NULL,
             correct_answer TEXT NOT NULL, explanation TEXT, chapter TEXT, difficulty TEXT, sheet_row INTEGER UNIQUE)""",
         """CREATE TABLE IF NOT EXISTS rounds (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_1_id INTEGER NOT NULL,
+            question_2_id INTEGER NOT NULL,
+            question_3_id INTEGER NOT NULL,
+            question_4_id INTEGER NOT NULL,
             started_at TEXT NOT NULL, ends_at TEXT NOT NULL, prize_ends_at TEXT,
             winner_user_id TEXT, winner_name TEXT, winner_time_ms INTEGER,
             winner_photo_path TEXT, winner_upi_id TEXT, announced INTEGER DEFAULT 0)""",
         """CREATE TABLE IF NOT EXISTS attempts (
             id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL,
-            user_id TEXT NOT NULL, user_name TEXT, selected_answer TEXT NOT NULL,
+            user_id TEXT NOT NULL, user_name TEXT, selected_answers TEXT NOT NULL,
             is_correct INTEGER NOT NULL, time_ms INTEGER NOT NULL,
             attempted_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(round_id, user_id))""",
         """CREATE TABLE IF NOT EXISTS winners (
@@ -117,19 +121,30 @@ def get_or_create_current_round(return_is_new=False):
     conn = get_db(); c = conn.cursor(); now = datetime.utcnow().isoformat()
     c.execute("SELECT * FROM rounds WHERE ends_at > ? ORDER BY started_at DESC LIMIT 1", (now,))
     rnd = c.fetchone()
-    if rnd: 
+    if rnd:
         conn.close()
         return (dict(rnd), False) if return_is_new else dict(rnd)
-    c.execute("SELECT id FROM questions WHERE id NOT IN (SELECT question_id FROM rounds ORDER BY started_at DESC LIMIT 50) ORDER BY RANDOM() LIMIT 1")
-    q = c.fetchone()
-    if not q: c.execute("SELECT id FROM questions ORDER BY RANDOM() LIMIT 1"); q = c.fetchone()
-    if not q: 
+    # Select 4 random questions - try to avoid recently used ones first
+    c.execute("""SELECT id FROM questions WHERE id NOT IN (
+        SELECT question_1_id FROM rounds ORDER BY started_at DESC LIMIT 10
+        UNION SELECT question_2_id FROM rounds ORDER BY started_at DESC LIMIT 10
+        UNION SELECT question_3_id FROM rounds ORDER BY started_at DESC LIMIT 10
+        UNION SELECT question_4_id FROM rounds ORDER BY started_at DESC LIMIT 10
+    ) ORDER BY RANDOM() LIMIT 4""")
+    questions = c.fetchall()
+    if len(questions) < 4:
+        # Not enough unused questions, just get any 4 random questions
+        c.execute("SELECT id FROM questions ORDER BY RANDOM() LIMIT 4")
+        questions = c.fetchall()
+    if len(questions) < 4:
         conn.close()
         return (None, False) if return_is_new else None
+    q_ids = [q["id"] for q in questions]
     started = datetime.utcnow()
     prize_ends = started + timedelta(minutes=PRIZE_WINDOW_MINUTES)
     ends = started + timedelta(hours=QUESTION_INTERVAL_HOURS)
-    c.execute("INSERT INTO rounds (question_id, started_at, ends_at, prize_ends_at) VALUES (?,?,?,?)", (q["id"], started.isoformat(), ends.isoformat(), prize_ends.isoformat()))
+    c.execute("INSERT INTO rounds (question_1_id, question_2_id, question_3_id, question_4_id, started_at, ends_at, prize_ends_at) VALUES (?,?,?,?,?,?,?)",
+              (q_ids[0], q_ids[1], q_ids[2], q_ids[3], started.isoformat(), ends.isoformat(), prize_ends.isoformat()))
     rid = c.lastrowid; conn.commit()
     c.execute("SELECT * FROM rounds WHERE id = ?", (rid,)); r = dict(c.fetchone()); conn.close()
     # Trigger channel announcement for new round (run in background)
@@ -144,7 +159,7 @@ def get_or_create_current_round(return_is_new=False):
 async def send_winner_to_channel(round_id, winner_name, time_ms, photo_path=None):
     ts = time_ms/1000
     app_line = f"📱 <a href='{PLAYSTORE_LINK}'>⬇️ Download MedicNEET</a>" if APP_STATUS=="live" and PLAYSTORE_LINK else "📱 <b>MedicNEET App — Launching Soon!</b> 🔔"
-    text = f"🏆 <b>WINNER!</b>\n\n👤 {winner_name}\n⚡ Solved in {ts:.1f}s\n💰 Wins ₹{CASH_PRIZE}!\n\n🔥 Next question in {QUESTION_INTERVAL_HOURS}h!\n\n{app_line}"
+    text = f"🏆 <b>WINNER!</b>\n\n👤 {winner_name}\n⚡ Solved 4/4 in {ts:.1f}s\n💰 Wins ₹{CASH_PRIZE}!\n\n🔥 Next question in {QUESTION_INTERVAL_HOURS}h!\n\n{app_line}"
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
     async with httpx.AsyncClient() as client:
         if photo_path and os.path.exists(photo_path):
@@ -153,10 +168,10 @@ async def send_winner_to_channel(round_id, winner_name, time_ms, photo_path=None
 
 async def send_new_round_to_channel():
     """Post new question alert with quiz button to channel"""
-    text = f"""🚨 <b>NEET 2026 - High Level Biology Question Posted!</b>
+    text = f"""🚨 <b>NEET 2026 - 4 High Level Biology Questions Posted!</b>
 
-💰 ₹{CASH_PRIZE} for the fastest correct answer
-⏱ Prize window: {PRIZE_WINDOW_MINUTES} minute only!
+💰 ₹{CASH_PRIZE} for the fastest to answer ALL 4 correctly
+⏱ Prize window: {PRIZE_WINDOW_MINUTES} minutes only!
 🏆 Winners announced with payment proof
 
 👇 Answer now!"""
@@ -263,38 +278,120 @@ async def api_current_round():
     rnd = get_or_create_current_round()
     if not rnd: return JSONResponse({"error":"No questions"}, status_code=404)
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT * FROM questions WHERE id = ?", (rnd["question_id"],)); q = c.fetchone()
+    # Fetch all 4 questions
+    q_ids = [rnd["question_1_id"], rnd["question_2_id"], rnd["question_3_id"], rnd["question_4_id"]]
+    c.execute("SELECT * FROM questions WHERE id IN (?,?,?,?)", q_ids)
+    questions_raw = c.fetchall()
+    # Maintain order of questions as they were stored
+    questions_dict = {q["id"]: q for q in questions_raw}
+    questions = [
+        {
+            "text": questions_dict[q_id]["question"],
+            "option_a": questions_dict[q_id]["option_a"],
+            "option_b": questions_dict[q_id]["option_b"],
+            "option_c": questions_dict[q_id]["option_c"],
+            "option_d": questions_dict[q_id]["option_d"],
+            "chapter": questions_dict[q_id]["chapter"]
+        }
+        for q_id in q_ids if q_id in questions_dict
+    ]
     c.execute("SELECT COUNT(*) as cnt FROM attempts WHERE round_id = ?", (rnd["id"],)); ac = c.fetchone()["cnt"]
     c.execute("SELECT user_name, time_ms FROM attempts WHERE round_id = ? AND is_correct = 1 ORDER BY time_ms ASC LIMIT 1", (rnd["id"],))
     f = c.fetchone(); conn.close()
-    return {"round_id":rnd["id"],"ends_at":rnd["ends_at"],"prize_ends_at":rnd.get("prize_ends_at"),"question":{"text":q["question"],"option_a":q["option_a"],"option_b":q["option_b"],"option_c":q["option_c"],"option_d":q["option_d"],"chapter":q["chapter"]},"stats":{"attempts":ac,"fastest_name":f["user_name"] if f else None,"fastest_time_ms":f["time_ms"] if f else None}}
+    return {"round_id":rnd["id"],"ends_at":rnd["ends_at"],"prize_ends_at":rnd.get("prize_ends_at"),"questions":questions,"stats":{"attempts":ac,"fastest_name":f["user_name"] if f else None,"fastest_time_ms":f["time_ms"] if f else None}}
 
 @app.post("/api/submit")
 async def api_submit(request: Request):
-    data = await request.json(); rid=data.get("round_id"); uid=str(data.get("user_id","")); un=data.get("user_name","Anon"); sel=data.get("answer","").upper().strip(); tms=int(data.get("time_ms",0))
-    if not all([rid,uid,sel,tms]): raise HTTPException(400,"Missing fields")
+    data = await request.json()
+    rid = data.get("round_id")
+    uid = str(data.get("user_id", ""))
+    un = data.get("user_name", "Anon")
+    answers = data.get("answers", [])  # Array of 4 answers
+    tms = int(data.get("time_ms", 0))
+
+    # Validate input
+    if not all([rid, uid, tms]) or not isinstance(answers, list) or len(answers) != 4:
+        raise HTTPException(400, "Missing fields or invalid answers format")
+
+    # Normalize answers
+    answers = [str(a).upper().strip() for a in answers]
+
     conn = get_db(); c = conn.cursor(); now = datetime.utcnow().isoformat()
-    c.execute("SELECT * FROM rounds WHERE id = ? AND ends_at > ?", (rid,now)); rnd = c.fetchone()
-    if not rnd: conn.close(); raise HTTPException(400,"Round ended")
-    c.execute("SELECT id FROM attempts WHERE round_id = ? AND user_id = ?", (rid,uid))
-    if c.fetchone(): conn.close(); raise HTTPException(400,"Already attempted")
-    c.execute("SELECT correct_answer, explanation FROM questions WHERE id = ?", (rnd["question_id"],)); qd = c.fetchone()
-    correct = qd["correct_answer"]; exp = qd["explanation"] or ""; ic = 1 if sel==correct else 0
-    c.execute("INSERT INTO attempts (round_id,user_id,user_name,selected_answer,is_correct,time_ms) VALUES (?,?,?,?,?,?)", (rid,uid,un,sel,ic,tms))
+    c.execute("SELECT * FROM rounds WHERE id = ? AND ends_at > ?", (rid, now))
+    rnd = c.fetchone()
+    if not rnd:
+        conn.close()
+        raise HTTPException(400, "Round ended")
+
+    c.execute("SELECT id FROM attempts WHERE round_id = ? AND user_id = ?", (rid, uid))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(400, "Already attempted")
+
+    # Fetch all 4 questions and their correct answers
+    q_ids = [rnd["question_1_id"], rnd["question_2_id"], rnd["question_3_id"], rnd["question_4_id"]]
+    c.execute("SELECT id, correct_answer, explanation FROM questions WHERE id IN (?,?,?,?)", q_ids)
+    questions_raw = c.fetchall()
+    questions_dict = {q["id"]: q for q in questions_raw}
+
+    # Check each answer and collect results
+    correct_answers = []
+    explanations = []
+    results = []
+    all_correct = True
+
+    for i, q_id in enumerate(q_ids):
+        if q_id in questions_dict:
+            correct_ans = questions_dict[q_id]["correct_answer"]
+            user_ans = answers[i] if i < len(answers) else ""
+            is_correct = user_ans == correct_ans
+
+            correct_answers.append(correct_ans)
+            explanations.append(questions_dict[q_id]["explanation"] or "")
+            results.append(is_correct)
+
+            if not is_correct:
+                all_correct = False
+        else:
+            correct_answers.append("?")
+            explanations.append("")
+            results.append(False)
+            all_correct = False
+
+    # Store attempt with all answers as JSON
+    ic = 1 if all_correct else 0
+    c.execute("INSERT INTO attempts (round_id,user_id,user_name,selected_answers,is_correct,time_ms) VALUES (?,?,?,?,?,?)",
+              (rid, uid, un, json.dumps(answers), ic, tms))
+
     iw = False
     # Check if still in prize window
     prize_ends_at = rnd["prize_ends_at"]
     in_prize_window = prize_ends_at and now <= prize_ends_at
+
     if ic and in_prize_window:
         c.execute("SELECT MIN(time_ms) as best FROM attempts WHERE round_id = ? AND is_correct = 1", (rid,))
-        if c.fetchone()["best"] == tms:
-            c.execute("UPDATE rounds SET winner_user_id=?,winner_name=?,winner_time_ms=? WHERE id=?", (uid,un,tms,rid))
+        best_time = c.fetchone()["best"]
+        if best_time == tms:
+            c.execute("UPDATE rounds SET winner_user_id=?,winner_name=?,winner_time_ms=? WHERE id=?", (uid, un, tms, rid))
             c.execute("DELETE FROM winners WHERE round_id = ?", (rid,))
-            c.execute("INSERT INTO winners (round_id,user_id,user_name,time_ms) VALUES (?,?,?,?)", (rid,uid,un,tms)); iw = True
+            c.execute("INSERT INTO winners (round_id,user_id,user_name,time_ms) VALUES (?,?,?,?)", (rid, uid, un, tms))
+            iw = True
+
     conn.commit()
     c.execute("SELECT user_name, time_ms FROM attempts WHERE round_id = ? AND is_correct = 1 ORDER BY time_ms ASC LIMIT 10", (rid,))
-    lb = [dict(r) for r in c.fetchall()]; conn.close()
-    return {"correct":bool(ic),"correct_answer":correct,"explanation":exp,"your_time_ms":tms,"is_current_winner":iw,"leaderboard":lb,"prize_window_active":in_prize_window}
+    lb = [dict(r) for r in c.fetchall()]
+    conn.close()
+
+    return {
+        "all_correct": all_correct,
+        "results": results,  # Array of True/False for each question
+        "correct_answers": correct_answers,
+        "explanations": explanations,
+        "your_time_ms": tms,
+        "is_current_winner": iw,
+        "leaderboard": lb,
+        "prize_window_active": in_prize_window
+    }
 
 @app.post("/api/winner-photo")
 async def api_winner_photo(round_id:int=Form(...),user_id:str=Form(...),upi_id:str=Form(...),photo:UploadFile=File(...)):
@@ -323,7 +420,7 @@ async def api_leaderboard():
 @app.get("/api/history")
 async def api_history():
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT r.id, r.started_at, r.winner_name, r.winner_time_ms, q.question, q.chapter FROM rounds r JOIN questions q ON q.id = r.question_id WHERE r.announced = 1 ORDER BY r.started_at DESC LIMIT 10")
+    c.execute("SELECT r.id, r.started_at, r.winner_name, r.winner_time_ms, q.question, q.chapter FROM rounds r JOIN questions q ON q.id = r.question_1_id WHERE r.announced = 1 ORDER BY r.started_at DESC LIMIT 10")
     h = [dict(r) for r in c.fetchall()]; conn.close(); return {"history":h}
 
 @app.get("/api/app-status")
