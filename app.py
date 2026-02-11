@@ -23,7 +23,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@your_channel")
 QUESTION_INTERVAL_HOURS = int(os.getenv("QUESTION_INTERVAL_HOURS", "4"))
 PRIZE_WINDOW_MINUTES = int(os.getenv("PRIZE_WINDOW_MINUTES", "2"))  # Prize only for first X minutes
-CASH_PRIZE = int(os.getenv("CASH_PRIZE", "50"))
+CASH_PRIZE = int(os.getenv("CASH_PRIZE", "5"))
 DB_PATH = os.getenv("DB_PATH", "medicneet.db")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://yourdomain.com")
 APP_STATUS = os.getenv("APP_STATUS", "launching_soon")  # "launching_soon" or "live"
@@ -156,27 +156,50 @@ def get_or_create_current_round(return_is_new=False):
     logger.info(f"📢 New round announced: Round #{rid}")
     return (r, True) if return_is_new else r
 
-async def send_winner_to_channel(round_id, winner_name, time_ms, photo_path=None):
-    ts = time_ms/1000
-    app_line = f"📱 <a href='{PLAYSTORE_LINK}'>⬇️ Download MedicNEET</a>" if APP_STATUS=="live" and PLAYSTORE_LINK else "📱 <b>MedicNEET App — Launching Soon!</b> 🔔"
-    text = f"🏆 <b>WINNER!</b>\n\n👤 {winner_name}\n⚡ Solved 4/4 in {ts:.1f}s\n💰 Wins ₹{CASH_PRIZE}!\n\n🔥 Next question in {QUESTION_INTERVAL_HOURS}h!\n\n{app_line}"
+async def send_winner_to_channel(round_id):
+    # Fetch all top 10 winners from database
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT user_name, time_ms, prize_amount FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10", (round_id,))
+    winners = c.fetchall()
+    conn.close()
+
+    if not winners:
+        return  # No winners to announce
+
+    # Build winner list
+    winner_lines = []
+    for i, w in enumerate(winners, start=1):
+        name = w["user_name"] or "Anonymous"
+        time_sec = w["time_ms"] / 1000
+        prize = w["prize_amount"]
+        winner_lines.append(f"{i}. {name} — 4/4 in {time_sec:.1f}s — ₹{prize} ✅")
+
+    winner_text = "\n".join(winner_lines)
+    total_prize = len(winners) * 5
+
+    text = f"""🏆 <b>ROUND #{round_id} RESULTS</b>
+
+{winner_text}
+
+💰 Total: ₹{total_prize}
+🔥 Next round in {QUESTION_INTERVAL_HOURS}h!"""
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
     async with httpx.AsyncClient() as client:
-        if photo_path and os.path.exists(photo_path):
-            with open(photo_path,"rb") as p: await client.post(f"{url}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":text,"parse_mode":"HTML"}, files={"photo":p})
-        else: await client.post(f"{url}/sendMessage", data={"chat_id":CHANNEL_ID,"text":text,"parse_mode":"HTML"})
+        await client.post(f"{url}/sendMessage", data={"chat_id":CHANNEL_ID,"text":text,"parse_mode":"HTML"})
 
 async def send_new_round_to_channel():
     """Post new question alert with quiz button to channel"""
     text = f"""🚨 <b>NEET 2026 - 4 High Level Biology Questions Posted!</b>
 
-💰 ₹{CASH_PRIZE} for the fastest to answer ALL 4 correctly
+💰 Top 10 winners get ₹{CASH_PRIZE} each (₹50 total prize pool)
 ⏱ Prize window: {PRIZE_WINDOW_MINUTES} minutes only!
 🏆 Winners announced with payment proof
 
 👇 Answer now!"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
-    button = {"inline_keyboard": [[{"text": "🧠 Play Quiz - Win ₹50!", "url": "https://t.me/Winners_neetbot?start=quiz"}]]}
+    button = {"inline_keyboard": [[{"text": "🧠 Play Quiz - Win ₹5!", "url": "https://t.me/Winners_neetbot?start=quiz"}]]}
     async with httpx.AsyncClient() as client:
         await client.post(f"{url}/sendMessage", json={"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML", "reply_markup": button})
 
@@ -242,9 +265,9 @@ async def round_manager():
     while True:
         try:
             conn = get_db(); c = conn.cursor(); now = datetime.utcnow(); now_str = now.isoformat()
-            c.execute("SELECT r.id, r.winner_name, r.winner_time_ms, r.winner_photo_path FROM rounds r WHERE r.prize_ends_at <= ? AND r.announced = 0 AND r.winner_user_id IS NOT NULL", (now_str,))
+            c.execute("SELECT r.id FROM rounds r WHERE r.prize_ends_at <= ? AND r.announced = 0 AND r.winner_user_id IS NOT NULL", (now_str,))
             for rnd in c.fetchall():
-                await send_winner_to_channel(rnd["id"], rnd["winner_name"], rnd["winner_time_ms"], rnd["winner_photo_path"])
+                await send_winner_to_channel(rnd["id"])
                 c.execute("UPDATE rounds SET announced = 1 WHERE id = ?", (rnd["id"],))
             c.execute("UPDATE rounds SET announced = 1 WHERE prize_ends_at <= ? AND announced = 0 AND winner_user_id IS NULL", (now_str,))
             conn.commit(); conn.close()
@@ -369,13 +392,23 @@ async def api_submit(request: Request):
     in_prize_window = prize_ends_at and now <= prize_ends_at
 
     if ic and in_prize_window:
-        c.execute("SELECT MIN(time_ms) as best FROM attempts WHERE round_id = ? AND is_correct = 1", (rid,))
-        best_time = c.fetchone()["best"]
-        if best_time == tms:
-            c.execute("UPDATE rounds SET winner_user_id=?,winner_name=?,winner_time_ms=? WHERE id=?", (uid, un, tms, rid))
-            c.execute("DELETE FROM winners WHERE round_id = ?", (rid,))
-            c.execute("INSERT INTO winners (round_id,user_id,user_name,time_ms) VALUES (?,?,?,?)", (rid, uid, un, tms))
+        # Add to winners table with ₹5 prize
+        c.execute("INSERT INTO winners (round_id,user_id,user_name,time_ms,prize_amount) VALUES (?,?,?,?,?)", (rid, uid, un, tms, 5))
+
+        # Keep only top 10 winners for this round
+        c.execute("DELETE FROM winners WHERE round_id = ? AND id NOT IN (SELECT id FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10)", (rid, rid))
+
+        # Check if user is in top 10
+        c.execute("SELECT COUNT(*) as cnt FROM winners WHERE round_id = ? AND user_id = ?", (rid, uid))
+        if c.fetchone()["cnt"] > 0:
             iw = True
+
+        # Update rounds table with fastest (1st place) winner
+        c.execute("SELECT user_id, user_name, time_ms FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 1", (rid,))
+        fastest = c.fetchone()
+        if fastest:
+            c.execute("UPDATE rounds SET winner_user_id=?,winner_name=?,winner_time_ms=? WHERE id=?",
+                     (fastest["user_id"], fastest["user_name"], fastest["time_ms"], rid))
 
     conn.commit()
     c.execute("SELECT user_name, time_ms FROM attempts WHERE round_id = ? AND is_correct = 1 ORDER BY time_ms ASC LIMIT 10", (rid,))
