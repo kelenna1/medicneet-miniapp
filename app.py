@@ -72,7 +72,31 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP)""",
         """CREATE TABLE IF NOT EXISTS email_export_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT, exported_at TEXT NOT NULL,
-            email_count INTEGER, status TEXT)"""
+            email_count INTEGER, status TEXT)""",
+        """CREATE TABLE IF NOT EXISTS wallets (
+            user_id TEXT PRIMARY KEY,
+            user_name TEXT,
+            balance INTEGER DEFAULT 0,
+            total_earned INTEGER DEFAULT 0,
+            upi_id TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            round_id INTEGER,
+            status TEXT DEFAULT 'completed',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS withdrawal_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            user_name TEXT,
+            amount INTEGER NOT NULL,
+            upi_id TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP)"""
     ]:
         c.execute(sql)
     conn.commit(); conn.close()
@@ -260,6 +284,30 @@ def send_winner_notification_email(round_id, winner_name, upi_id, time_ms, user_
     except Exception as e:
         logger.error(f"❌ Winner email failed: {e}")
 
+def send_withdrawal_request_email(user_id, user_name, amount, upi_id, balance, total_earned):
+    """Send email when user requests withdrawal"""
+    try:
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        msg = MIMEText(
+            f"💰 New Withdrawal Request!\n\n"
+            f"User: {user_name}\n"
+            f"User ID: {user_id}\n"
+            f"Amount: ₹{amount}\n"
+            f"UPI ID: {upi_id}\n"
+            f"Current Balance: ₹{balance}\n"
+            f"Total Earned: ₹{total_earned}\n\n"
+            f"Requested at: {now}\n\n"
+            f"— MedicNEET Bot", "plain"
+        )
+        msg["From"] = SMTP_USER
+        msg["To"] = "shahulhameedp49@gmail.com"
+        msg["Subject"] = f"💰 Withdrawal Request - {user_name}"
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+            s.starttls(); s.login(SMTP_USER, SMTP_PASS); s.send_message(msg)
+        logger.info(f"✅ Withdrawal email sent: {user_name} / ₹{amount}")
+    except Exception as e:
+        logger.error(f"❌ Withdrawal email failed: {e}")
+
 async def round_manager():
     last_export_date = None
     while True:
@@ -403,6 +451,14 @@ async def api_submit(request: Request):
         if c.fetchone()["cnt"] > 0:
             iw = True
 
+            # Add ₹5 to wallet balance
+            c.execute("INSERT INTO wallets (user_id, user_name, balance, total_earned, created_at, updated_at) VALUES (?,?,5,5,?,?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + 5, total_earned = total_earned + 5, updated_at = ?",
+                     (uid, un, now, now, now))
+
+            # Create transaction record
+            c.execute("INSERT INTO transactions (user_id, amount, type, round_id, status, created_at) VALUES (?,?,?,?,?,?)",
+                     (uid, 5, "win", rid, "completed", now))
+
         # Update rounds table with fastest (1st place) winner
         c.execute("SELECT user_id, user_name, time_ms FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 1", (rid,))
         fastest = c.fetchone()
@@ -484,3 +540,85 @@ async def api_sync_sheet():
 @app.get("/api/export-emails")
 async def api_export_emails():
     send_daily_email_export(); return {"status":"triggered"}
+
+@app.get("/api/wallet")
+async def api_wallet(user_id: str):
+    """Get wallet balance and transactions for a user"""
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+
+    conn = get_db(); c = conn.cursor()
+
+    # Get wallet info
+    c.execute("SELECT balance, total_earned, upi_id FROM wallets WHERE user_id = ?", (user_id,))
+    wallet = c.fetchone()
+
+    if not wallet:
+        # Create wallet if doesn't exist
+        conn.close()
+        return {"balance": 0, "total_earned": 0, "upi_id": None, "transactions": []}
+
+    # Get transactions (wins only)
+    c.execute("SELECT amount, type, round_id, created_at FROM transactions WHERE user_id = ? AND type = 'win' ORDER BY created_at DESC LIMIT 50", (user_id,))
+    transactions = [dict(t) for t in c.fetchall()]
+
+    conn.close()
+
+    return {
+        "balance": wallet["balance"],
+        "total_earned": wallet["total_earned"],
+        "upi_id": wallet["upi_id"],
+        "transactions": transactions
+    }
+
+@app.post("/api/withdraw")
+async def api_withdraw(request: Request):
+    """Submit withdrawal request"""
+    data = await request.json()
+    user_id = str(data.get("user_id", ""))
+    user_name = data.get("user_name", "Unknown")
+    upi_id = str(data.get("upi_id", "")).strip()
+
+    if not user_id or not upi_id:
+        raise HTTPException(400, "user_id and upi_id required")
+
+    if not upi_id or "@" not in upi_id:
+        raise HTTPException(400, "Invalid UPI ID format")
+
+    conn = get_db(); c = conn.cursor()
+
+    # Get current wallet balance
+    c.execute("SELECT balance, total_earned, user_name FROM wallets WHERE user_id = ?", (user_id,))
+    wallet = c.fetchone()
+
+    if not wallet or wallet["balance"] < 50:
+        conn.close()
+        raise HTTPException(400, "Insufficient balance. Minimum withdrawal is ₹50")
+
+    balance = wallet["balance"]
+    total_earned = wallet["total_earned"]
+    actual_user_name = wallet["user_name"] or user_name
+
+    # Deduct full balance from wallet
+    c.execute("UPDATE wallets SET balance = 0, upi_id = ?, updated_at = ? WHERE user_id = ?",
+             (upi_id, datetime.utcnow().isoformat(), user_id))
+
+    # Create withdrawal request
+    c.execute("INSERT INTO withdrawal_requests (user_id, user_name, amount, upi_id, status, created_at) VALUES (?,?,?,?,?,?)",
+             (user_id, actual_user_name, balance, upi_id, "pending", datetime.utcnow().isoformat()))
+
+    # Create transaction record
+    c.execute("INSERT INTO transactions (user_id, amount, type, status, created_at) VALUES (?,?,?,?,?)",
+             (user_id, balance, "withdraw", "pending", datetime.utcnow().isoformat()))
+
+    conn.commit()
+    conn.close()
+
+    # Send email notification
+    send_withdrawal_request_email(user_id, actual_user_name, balance, upi_id, 0, total_earned)
+
+    return {
+        "success": True,
+        "message": f"Withdrawal requested! You'll receive ₹{balance} within 24 hours",
+        "amount": balance
+    }
