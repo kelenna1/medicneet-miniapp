@@ -1447,8 +1447,14 @@
                 <div class="explanation-header">📖 Explanation</div>
                 <div class="explanation-text" id="explanationText"></div>
             </div>
+            <div id="questionsReviewContainer"></div>
+            <div id="top10Notification" style="display:none;background:var(--green-lt);border:2px solid var(--green);border-radius:18px;padding:16px;margin-bottom:16px;text-align:center;box-shadow:0 3px 0 var(--green-dk)">
+                <div style="font-size:32px;margin-bottom:8px">🎉</div>
+                <div style="font-size:18px;font-weight:900;color:var(--green-dk);margin-bottom:4px">You're in Top 10!</div>
+                <div style="font-size:14px;font-weight:700;color:var(--txt2)">₹5 added to wallet</div>
+            </div>
             <div class="winner-form" id="winnerForm" style="display:none">
-                <h3>🏆 Claim Your ₹50 Prize!</h3>
+                <h3>🏆 Top 10 win ₹5!</h3>
                 <p style="color:var(--txt2);font-size:13px;margin-bottom:14px;text-align:center">Submit your details.
                     Payment within 24 hours.</p>
                 <div class="form-group"><label>Your UPI ID</label><input type="text" class="form-input" id="upiInput"
@@ -2102,7 +2108,7 @@
                 document.getElementById('resultIcon').textContent = '🏆';
                 document.getElementById('resultTitle').textContent = "YOU'RE WINNING!";
                 document.getElementById('resultTitle').className = 'result-title win-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 correctly — fastest time! Claim your ₹50!';
+                document.getElementById('resultSub').textContent = 'Solved 4/4 correctly — fastest time! Top 10 win ₹5!';
                 document.getElementById('winnerForm').style.display = 'block';
                 document.getElementById('resultTime').style.color = 'var(--green)';
             }
@@ -2153,6 +2159,44 @@
                 expCard.style.display = 'block';
             } else {
                 expCard.style.display = 'none';
+            }
+
+            // Build questions review section
+            const reviewContainer = document.getElementById('questionsReviewContainer');
+            if (currentRound?.questions && data.results) {
+                let reviewHTML = '<div style="margin-bottom:16px">';
+                currentRound.questions.forEach((q, idx) => {
+                    const isCorrect = data.results[idx];
+                    const userAnswer = userAnswers[idx];
+                    const correctAnswer = data.correct_answers[idx];
+                    const icon = isCorrect ? '✅' : '❌';
+
+                    reviewHTML += `
+                        <div style="background:var(--bg2);border:2px solid:var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:0 3px 0 var(--border)">
+                            <div style="font-size:14px;font-weight:800;color:var(--txt);margin-bottom:6px">
+                                ${icon} Question ${idx + 1}/4
+                            </div>
+                            <div style="font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:4px">
+                                Your answer: <strong>${userAnswer || 'None'}</strong>
+                            </div>
+                            ${!isCorrect ? `<div style="font-size:13px;font-weight:700;color:var(--green-dk)">
+                                Correct answer: <strong>${correctAnswer}</strong>
+                            </div>` : ''}
+                        </div>
+                    `;
+                });
+                reviewHTML += '</div>';
+                reviewContainer.innerHTML = reviewHTML;
+            } else {
+                reviewContainer.innerHTML = '';
+            }
+
+            // Check for top 10 placement
+            const top10Notif = document.getElementById('top10Notification');
+            if (data.rank && data.rank <= 10 && inPrizeWindow && allCorrect && !data.is_current_winner) {
+                top10Notif.style.display = 'block';
+            } else {
+                top10Notif.style.display = 'none';
             }
 
             buildCTA('appCTA');
@@ -2514,13 +2558,7 @@
         let lastTime = '0.00';
 
         async function shareChallenge() {
-            const shareText = `🧠 I scored ${lastScore}/4 in ${lastTime}s on MedicNEET Quiz!
-
-Can you beat my time? 💪
-
-Play now 👉 https://t.me/Winners_neetbot/Medicneet
-
-#NEET2026 #MedicNEET`;
+            const shareText = `🧠 I scored ${lastScore}/4 in ${lastTime}s on MedicNEET Quiz! Can you beat me? 👉 https://t.me/Winners_neetbot/Medicneet`;
 
             // Try using navigator.share() for mobile
             if (navigator.share) {
