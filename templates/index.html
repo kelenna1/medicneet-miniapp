@@ -664,6 +664,75 @@
             margin-top: 6px
         }
 
+        .sub-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 2px
+        }
+
+        .sub-tab-btn {
+            flex: 1;
+            padding: 10px;
+            background: none;
+            border: none;
+            font-size: 14px;
+            font-weight: 800;
+            font-family: inherit;
+            color: var(--txt3);
+            cursor: pointer;
+            position: relative;
+            -webkit-tap-highlight-color: transparent;
+            transition: color .2s
+        }
+
+        .sub-tab-btn.active {
+            color: var(--green)
+        }
+
+        .sub-tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--green);
+            border-radius: 2px
+        }
+
+        .sub-tab-content {
+            display: none
+        }
+
+        .sub-tab-content.active {
+            display: block
+        }
+
+        .lb-row.user-row {
+            border-width: 3px;
+            background: var(--purple) !important;
+            border-color: #a855d6 !important;
+            box-shadow: 0 3px 0 #a855d6
+        }
+
+        .lb-row .user-badge {
+            display: inline-block;
+            background: var(--purple);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 800;
+            margin-left: 6px
+        }
+
+        .medal-icon {
+            font-size: 20px;
+            margin-right: 4px
+        }
+
         .lb-section {
             margin-top: 16px
         }
@@ -1344,12 +1413,29 @@
         </div>
 
         <div class="screen" id="leaderboardScreen">
-            <h2 style="font-size:22px;font-weight:900;margin-bottom:16px">🏆 All-Time Champions</h2>
-            <div id="allTimeLeaderboard">
-                <div class="loading">
-                    <div class="spinner"></div>
+            <h2 style="font-size:22px;font-weight:900;margin-bottom:16px">🏆 TOP</h2>
+
+            <div class="sub-tabs">
+                <button class="sub-tab-btn" id="thisRoundTabBtn" onclick="switchLeaderboardTab('thisRound')">This Round</button>
+                <button class="sub-tab-btn active" id="allTimeTabBtn" onclick="switchLeaderboardTab('allTime')">All Time</button>
+            </div>
+
+            <div class="sub-tab-content" id="thisRoundTab">
+                <div id="thisRoundLeaderboard">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
                 </div>
             </div>
+
+            <div class="sub-tab-content active" id="allTimeTab">
+                <div id="allTimeLeaderboard">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="lbCTA"></div>
         </div>
 
@@ -1825,15 +1911,89 @@
             }); c.innerHTML = h
         }
 
+        function switchLeaderboardTab(tab) {
+            // Update tab buttons
+            document.getElementById('thisRoundTabBtn').classList.remove('active');
+            document.getElementById('allTimeTabBtn').classList.remove('active');
+
+            // Update tab content
+            document.getElementById('thisRoundTab').classList.remove('active');
+            document.getElementById('allTimeTab').classList.remove('active');
+
+            if (tab === 'thisRound') {
+                document.getElementById('thisRoundTabBtn').classList.add('active');
+                document.getElementById('thisRoundTab').classList.add('active');
+                loadThisRoundLeaderboard();
+            } else {
+                document.getElementById('allTimeTabBtn').classList.add('active');
+                document.getElementById('allTimeTab').classList.add('active');
+                loadAllTimeLeaderboard();
+            }
+        }
+
+        async function loadThisRoundLeaderboard() {
+            try {
+                const res = await fetch(`${API}/api/leaderboard`);
+                const data = await res.json();
+                const c = document.getElementById('thisRoundLeaderboard');
+
+                if (!data.leaderboard?.length) {
+                    c.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No winners yet!</p>';
+                    return;
+                }
+
+                let h = '';
+                data.leaderboard.forEach((e, i) => {
+                    const cls = i === 0 ? 'first' : i === 1 ? 'second' : i === 2 ? 'third' : '';
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                    h += `<div class="lb-row ${cls}">
+                        <div class="lb-rank">${medal || i + 1}</div>
+                        <div class="lb-name">${e.user_name}</div>
+                        <div class="lb-wins">${e.wins} 🏆</div>
+                        <div class="lb-time" style="margin-left:10px">₹${e.total_won}</div>
+                    </div>`;
+                });
+                c.innerHTML = h;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
         async function loadAllTimeLeaderboard() {
             try {
-                const res = await fetch(`${API}/api/leaderboard`); const data = await res.json(); const c = document.getElementById('allTimeLeaderboard');
-                if (!data.leaderboard?.length) { c.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No winners yet!</p>'; buildCTA('lbCTA'); return }
-                let h = ''; data.leaderboard.forEach((e, i) => {
+                const res = await fetch(`${API}/api/leaderboard/alltime?user_id=${userId}`);
+                const data = await res.json();
+                const c = document.getElementById('allTimeLeaderboard');
+
+                if (!data.leaderboard?.length) {
+                    c.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No winners yet!</p>';
+                    buildCTA('lbCTA');
+                    return;
+                }
+
+                let h = '<div style="text-align:center;margin-bottom:16px;font-size:28px;font-weight:900">🏆 ALL-TIME LEADERBOARD</div>';
+
+                data.leaderboard.forEach((e, i) => {
                     const cls = i === 0 ? 'first' : i === 1 ? 'second' : i === 2 ? 'third' : '';
-                    h += `<div class="lb-row ${cls}"><div class="lb-rank">${i + 1}</div><div class="lb-name">${e.user_name}</div><div class="lb-wins">${e.wins} 🏆</div><div class="lb-time" style="margin-left:10px">₹${e.total_won}</div></div>`
-                }); c.innerHTML = h; buildCTA('lbCTA')
-            } catch (e) { console.error(e) }
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                    const isCurrentUser = e.user_id === userId;
+                    const userCls = isCurrentUser ? 'user-row' : '';
+                    const userBadge = isCurrentUser ? '<span class="user-badge">YOU</span>' : '';
+                    const bestTime = e.best_time ? (e.best_time / 1000).toFixed(1) + 's' : '--';
+
+                    h += `<div class="lb-row ${cls} ${userCls}">
+                        ${medal ? `<span class="medal-icon">${medal}</span>` : `<div class="lb-rank">${e.rank}</div>`}
+                        <div class="lb-name">${e.user_name}${userBadge}</div>
+                        <div class="lb-time" style="margin-left:auto;margin-right:10px">₹${e.total_earned}</div>
+                        <div class="lb-time" style="color:var(--txt3)">${bestTime}</div>
+                    </div>`;
+                });
+
+                c.innerHTML = h;
+                buildCTA('lbCTA');
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         async function loadHistory() {
