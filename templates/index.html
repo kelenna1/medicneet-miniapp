@@ -1467,6 +1467,68 @@
                 <div style="font-size:12px;color:var(--txt3);font-weight:700;margin-top:12px">Total Earned: ₹<span id="walletTotalEarned">0</span></div>
             </div>
 
+            <div id="statsSection" style="margin-bottom:20px">
+                <h3 style="font-size:18px;font-weight:900;margin-bottom:12px">📊 YOUR STATS</h3>
+
+                <div id="statsCard" style="background:var(--bg2);border:2px solid var(--border);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 3px 0 var(--border)">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">🏅</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Rank</div>
+                                <div id="statsRank" style="font-size:18px;font-weight:900;color:var(--txt)">--</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">💰</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Total Earned</div>
+                                <div id="statsTotalEarned" style="font-size:18px;font-weight:900;color:var(--txt)">₹0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">💳</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Balance</div>
+                                <div id="statsBalance" style="font-size:18px;font-weight:900;color:var(--txt)">₹0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">⚡</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Best Time</div>
+                                <div id="statsBestTime" style="font-size:18px;font-weight:900;color:var(--txt)">--</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">🎮</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Rounds Played</div>
+                                <div id="statsRoundsPlayed" style="font-size:18px;font-weight:900;color:var(--txt)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">🏆</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Rounds Won</div>
+                                <div id="statsRoundsWon" style="font-size:18px;font-weight:900;color:var(--txt)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;grid-column:1/-1">
+                            <div style="font-size:24px">📈</div>
+                            <div style="flex:1">
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Win Rate</div>
+                                <div id="statsWinRate" style="font-size:18px;font-weight:900;color:var(--txt)">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="encouragementMessage" style="display:none;background:var(--blue-lt);border:2px solid var(--blue);border-radius:16px;padding:14px;text-align:center;box-shadow:0 3px 0 var(--blue-dk)">
+                    <div style="font-size:14px;font-weight:700;color:var(--blue-dk)" id="encouragementText"></div>
+                </div>
+            </div>
+
             <div id="withdrawSection" style="display:none;margin-bottom:20px">
                 <div class="winner-form">
                     <h3>💸 Withdraw Money</h3>
@@ -2127,8 +2189,81 @@ Play now 👉 https://t.me/Winners_neetbot/Medicneet
                 } else {
                     txList.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:20px;font-weight:700">No transactions yet</p>';
                 }
+
+                // Load stats
+                loadStats();
             } catch (e) {
                 console.error('Failed to load wallet:', e);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API}/api/stats?user_id=${userId}`);
+                const data = await res.json();
+
+                // Update rank with color based on position
+                const rankEl = document.getElementById('statsRank');
+                const statsCard = document.getElementById('statsCard');
+
+                if (data.rank && data.total_players > 0) {
+                    rankEl.textContent = `#${data.rank} of ${data.total_players}`;
+
+                    // Color coding based on rank
+                    if (data.rank <= 10) {
+                        rankEl.style.color = 'var(--gold)';
+                        statsCard.style.borderColor = 'var(--gold)';
+                        statsCard.style.background = 'var(--gold-lt)';
+                        statsCard.style.boxShadow = '0 3px 0 var(--gold-dk)';
+                    } else if (data.rank <= 50) {
+                        rankEl.style.color = 'var(--green)';
+                        statsCard.style.borderColor = 'var(--green)';
+                        statsCard.style.background = 'var(--green-lt)';
+                        statsCard.style.boxShadow = '0 3px 0 var(--green-dk)';
+                    } else {
+                        rankEl.style.color = 'var(--txt)';
+                        statsCard.style.borderColor = 'var(--border)';
+                        statsCard.style.background = 'var(--bg2)';
+                        statsCard.style.boxShadow = '0 3px 0 var(--border)';
+                    }
+                } else {
+                    rankEl.textContent = '--';
+                }
+
+                // Update other stats
+                document.getElementById('statsTotalEarned').textContent = `₹${data.total_earned || 0}`;
+                document.getElementById('statsBalance').textContent = `₹${data.current_balance || 0}`;
+                document.getElementById('statsBestTime').textContent = data.best_time ? `${(data.best_time / 1000).toFixed(1)}s` : '--';
+                document.getElementById('statsRoundsPlayed').textContent = data.rounds_played || 0;
+                document.getElementById('statsRoundsWon').textContent = data.rounds_won || 0;
+                document.getElementById('statsWinRate').textContent = `${data.win_rate || 0}%`;
+
+                // Show encouragement messages
+                showEncouragementMessage(data);
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        function showEncouragementMessage(data) {
+            const msgEl = document.getElementById('encouragementMessage');
+            const textEl = document.getElementById('encouragementText');
+            let message = '';
+
+            // Check conditions for encouragement messages
+            if (data.current_balance >= 45 && data.current_balance < 50) {
+                message = `Almost there! ₹${50 - data.current_balance} more to withdraw!`;
+            } else if (data.win_rate < 50 && data.rounds_played > 0) {
+                message = '💡 Tip: Read questions carefully and think before answering!';
+            } else if (data.rank && data.rank > 50) {
+                message = '🚀 Keep playing to climb the leaderboard!';
+            }
+
+            if (message) {
+                textEl.textContent = message;
+                msgEl.style.display = 'block';
+            } else {
+                msgEl.style.display = 'none';
             }
         }
 
