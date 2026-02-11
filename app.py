@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email import encoders
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qsl
 import httpx
@@ -35,6 +35,11 @@ SMTP_PASS = os.getenv("SMTP_PASS", "YOUR_GMAIL_APP_PASSWORD")
 EXPORT_TO_EMAIL = os.getenv("EXPORT_TO_EMAIL", "medicneet.team@gmail.com")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
 GOOGLE_CREDS_FILE = os.getenv("GOOGLE_CREDS_FILE", "credentials.json")
+
+# ─── IST SCHEDULE CONFIG ─────────────────────────────────────────
+IST = timezone(timedelta(hours=5, minutes=30))
+SCHEDULED_TIMES_IST = [(19, 0), (19, 30), (20, 0), (20, 30)]
+ROUND_DURATION_MINUTES = 25
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -141,44 +146,78 @@ def is_valid_photo(fp):
         return ok and 10*1024 < os.path.getsize(fp) < 5*1024*1024
     except: return False
 
-def get_or_create_current_round(return_is_new=False):
+def get_current_round():
+    """Get the currently active round without creating a new one."""
     conn = get_db(); c = conn.cursor(); now = datetime.utcnow().isoformat()
     c.execute("SELECT * FROM rounds WHERE ends_at > ? ORDER BY started_at DESC LIMIT 1", (now,))
     rnd = c.fetchone()
-    if rnd:
+    conn.close()
+    return dict(rnd) if rnd else None
+
+def maybe_create_scheduled_round():
+    """Create a new round only if current IST time matches a scheduled slot."""
+    now_ist = datetime.now(IST)
+    now_utc = datetime.utcnow()
+
+    # Check if there's already an active round
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id FROM rounds WHERE ends_at > ?", (now_utc.isoformat(),))
+    if c.fetchone():
         conn.close()
-        return (dict(rnd), False) if return_is_new else dict(rnd)
-    # Select 4 random questions - try to avoid recently used ones first
-    c.execute("""SELECT id FROM questions WHERE id NOT IN (
-        SELECT question_1_id FROM rounds ORDER BY started_at DESC LIMIT 10
-        UNION SELECT question_2_id FROM rounds ORDER BY started_at DESC LIMIT 10
-        UNION SELECT question_3_id FROM rounds ORDER BY started_at DESC LIMIT 10
-        UNION SELECT question_4_id FROM rounds ORDER BY started_at DESC LIMIT 10
-    ) ORDER BY RANDOM() LIMIT 4""")
-    questions = c.fetchall()
-    if len(questions) < 4:
-        # Not enough unused questions, just get any 4 random questions
-        c.execute("SELECT id FROM questions ORDER BY RANDOM() LIMIT 4")
-        questions = c.fetchall()
-    if len(questions) < 4:
-        conn.close()
-        return (None, False) if return_is_new else None
-    q_ids = [q["id"] for q in questions]
-    started = datetime.utcnow()
-    prize_ends = started + timedelta(minutes=PRIZE_WINDOW_MINUTES)
-    ends = started + timedelta(hours=QUESTION_INTERVAL_HOURS)
-    c.execute("INSERT INTO rounds (question_1_id, question_2_id, question_3_id, question_4_id, started_at, ends_at, prize_ends_at) VALUES (?,?,?,?,?,?,?)",
-              (q_ids[0], q_ids[1], q_ids[2], q_ids[3], started.isoformat(), ends.isoformat(), prize_ends.isoformat()))
-    rid = c.lastrowid; conn.commit()
-    c.execute("SELECT * FROM rounds WHERE id = ?", (rid,)); r = dict(c.fetchone()); conn.close()
-    # Trigger channel announcement for new round (run in background)
-    import threading
-    def announce():
-        import asyncio
-        asyncio.run(send_new_round_to_channel())
-    threading.Thread(target=announce, daemon=True).start()
-    logger.info(f"📢 New round announced: Round #{rid}")
-    return (r, True) if return_is_new else r
+        return None
+
+    today_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    for hour, minute in SCHEDULED_TIMES_IST:
+        scheduled_ist = today_ist.replace(hour=hour, minute=minute)
+        diff_seconds = (now_ist - scheduled_ist).total_seconds()
+
+        # Within 2-minute window after scheduled time
+        if 0 <= diff_seconds < 120:
+            # Check if round already created for this time slot today
+            scheduled_utc = scheduled_ist.astimezone(timezone.utc).replace(tzinfo=None)
+            window_start = (scheduled_utc - timedelta(minutes=2)).isoformat()
+            window_end = (scheduled_utc + timedelta(minutes=5)).isoformat()
+
+            c.execute("SELECT id FROM rounds WHERE started_at >= ? AND started_at <= ?", (window_start, window_end))
+            if c.fetchone():
+                conn.close()
+                return None
+
+            # Select 4 random questions - try to avoid recently used ones first
+            c.execute("""SELECT id FROM questions WHERE id NOT IN (
+                SELECT question_1_id FROM rounds ORDER BY started_at DESC LIMIT 10
+                UNION SELECT question_2_id FROM rounds ORDER BY started_at DESC LIMIT 10
+                UNION SELECT question_3_id FROM rounds ORDER BY started_at DESC LIMIT 10
+                UNION SELECT question_4_id FROM rounds ORDER BY started_at DESC LIMIT 10
+            ) ORDER BY RANDOM() LIMIT 4""")
+            questions = c.fetchall()
+            if len(questions) < 4:
+                c.execute("SELECT id FROM questions ORDER BY RANDOM() LIMIT 4")
+                questions = c.fetchall()
+            if len(questions) < 4:
+                conn.close()
+                return None
+
+            q_ids = [q["id"] for q in questions]
+            started = now_utc
+            prize_ends = started + timedelta(minutes=PRIZE_WINDOW_MINUTES)
+            ends = started + timedelta(minutes=ROUND_DURATION_MINUTES)
+            c.execute("INSERT INTO rounds (question_1_id, question_2_id, question_3_id, question_4_id, started_at, ends_at, prize_ends_at) VALUES (?,?,?,?,?,?,?)",
+                      (q_ids[0], q_ids[1], q_ids[2], q_ids[3], started.isoformat(), ends.isoformat(), prize_ends.isoformat()))
+            rid = c.lastrowid; conn.commit()
+            c.execute("SELECT * FROM rounds WHERE id = ?", (rid,)); r = dict(c.fetchone()); conn.close()
+            # Trigger channel announcement for new round (run in background)
+            import threading
+            def announce():
+                import asyncio
+                asyncio.run(send_new_round_to_channel())
+            threading.Thread(target=announce, daemon=True).start()
+            logger.info(f"New scheduled round created: Round #{rid} at {hour}:{minute:02d} IST")
+            return r
+
+    conn.close()
+    return None
 
 async def send_winner_to_channel(round_id):
     # Fetch all top 10 winners from database
@@ -204,7 +243,7 @@ No winners this round! 😢
 Nobody scored 4/4 correct.
 
 Better luck next time!
-🔥 Next round in 30 mins!"""
+🔥 Rounds daily at 7:00, 7:30, 8:00, 8:30 PM IST!"""
     else:
         # Build winner list
         winner_lines = []
@@ -224,7 +263,7 @@ Better luck next time!
 💰 Total paid: ₹{total_prize}
 👥 Total participants: {total_participants}
 
-🔥 Next round in 30 mins!"""
+🔥 Rounds daily at 7:00, 7:30, 8:00, 8:30 PM IST!"""
 
     async with httpx.AsyncClient() as client:
         await client.post(f"{url}/sendMessage", json={"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML", "reply_markup": button})
@@ -334,11 +373,8 @@ async def round_manager():
                 await send_winner_to_channel(rnd["id"])
                 c.execute("UPDATE rounds SET announced = 1 WHERE id = ?", (rnd["id"],))
             conn.commit(); conn.close()
-            # Check for new round and announce if created
-            rnd, is_new = get_or_create_current_round(return_is_new=True)
-            if is_new and rnd:
-                await send_new_round_to_channel()
-                logger.info(f"📢 New round announced: Round #{rnd['id']}")
+            # Check if it's time to create a scheduled round
+            maybe_create_scheduled_round()
             today_str = now.strftime("%Y-%m-%d")
             if now.hour == 2 and now.minute >= 30 and last_export_date != today_str:
                 send_daily_email_export(); last_export_date = today_str
@@ -347,7 +383,7 @@ async def round_manager():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db(); sync_questions_from_sheet(); get_or_create_current_round()
+    init_db(); sync_questions_from_sheet(); maybe_create_scheduled_round()
     task = asyncio.create_task(round_manager()); yield; task.cancel()
 
 app = FastAPI(lifespan=lifespan)
@@ -359,10 +395,73 @@ os.makedirs("static/uploads", exist_ok=True)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request":request,"playstore_link":PLAYSTORE_LINK,"app_status":APP_STATUS,"cash_prize":CASH_PRIZE})
 
+@app.get("/api/schedule")
+async def api_schedule():
+    """Get today's round schedule with status for each time slot."""
+    now_ist = datetime.now(IST)
+    now_utc = datetime.utcnow()
+    today_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    conn = get_db(); c = conn.cursor()
+
+    schedule = []
+    next_round_utc = None
+
+    for hour, minute in SCHEDULED_TIMES_IST:
+        scheduled_ist = today_ist.replace(hour=hour, minute=minute)
+        scheduled_utc = scheduled_ist.astimezone(timezone.utc).replace(tzinfo=None)
+
+        # Check if a round exists for this slot
+        window_start = (scheduled_utc - timedelta(minutes=2)).isoformat()
+        window_end = (scheduled_utc + timedelta(minutes=ROUND_DURATION_MINUTES + 2)).isoformat()
+
+        c.execute("SELECT id, ends_at FROM rounds WHERE started_at >= ? AND started_at <= ?", (window_start, window_end))
+        existing = c.fetchone()
+
+        if existing:
+            if existing["ends_at"] > now_utc.isoformat():
+                status = "active"
+            else:
+                status = "completed"
+        elif now_ist >= scheduled_ist + timedelta(minutes=3):
+            status = "completed"
+        else:
+            status = "upcoming"
+            if next_round_utc is None:
+                next_round_utc = scheduled_utc.isoformat()
+
+        time_12h = f"{hour - 12 if hour > 12 else hour}:{minute:02d} PM"
+        schedule.append({
+            "time": time_12h,
+            "hour": hour,
+            "minute": minute,
+            "status": status,
+            "scheduled_utc": scheduled_utc.isoformat(),
+            "round_id": existing["id"] if existing else None
+        })
+
+    conn.close()
+
+    all_completed = all(s["status"] in ("completed",) for s in schedule)
+
+    if all_completed and not next_round_utc:
+        # Next round is tomorrow at first scheduled time
+        tomorrow_ist = today_ist + timedelta(days=1)
+        first_slot = SCHEDULED_TIMES_IST[0]
+        next_ist = tomorrow_ist.replace(hour=first_slot[0], minute=first_slot[1])
+        next_round_utc = next_ist.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
+
+    return {
+        "schedule": schedule,
+        "next_round_utc": next_round_utc,
+        "all_completed": all_completed,
+        "now_utc": now_utc.isoformat()
+    }
+
 @app.get("/api/current-round")
 async def api_current_round():
-    rnd = get_or_create_current_round()
-    if not rnd: return JSONResponse({"error":"No questions"}, status_code=404)
+    rnd = get_current_round()
+    if not rnd: return JSONResponse({"error":"No active round"}, status_code=404)
     conn = get_db(); c = conn.cursor()
     # Fetch all 4 questions
     q_ids = [rnd["question_1_id"], rnd["question_2_id"], rnd["question_3_id"], rnd["question_4_id"]]

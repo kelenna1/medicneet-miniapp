@@ -1356,8 +1356,7 @@
     </div>
     <div id="practiceModeBanner"
         style="display:none;background:var(--orange-lt);padding:8px 16px;text-align:center;border-bottom:2px solid var(--orange)">
-        <span style="font-weight:800;color:var(--orange);font-size:13px">⏰ PRACTICE MODE — Prize window ended. Next
-            question in <span id="nextQuestionTime">--:--</span></span>
+        <span style="font-weight:800;color:var(--orange);font-size:13px">⏰ PRACTICE MODE — Prize window ended. Round ends in <span id="nextQuestionTime">--:--</span></span>
     </div>
     <div class="page-content">
         <div class="screen active" id="loadingScreen">
@@ -1449,11 +1448,11 @@
         </div>
 
         <div class="screen" id="waitingScreen">
-            <div class="next-round-card">
-                <div style="font-size:56px">⏳</div>
-                <div style="font-size:20px;font-weight:900;margin-top:12px">Next Question Coming</div>
-                <div class="countdown" id="nextRoundCountdown">--:--:--</div>
-                <div style="color:var(--txt3);font-size:14px;font-weight:700">Stay tuned — ₹50 up for grabs!</div>
+            <div id="scheduleContainer">
+                <div class="next-round-card">
+                    <div style="font-size:56px">⏳</div>
+                    <div style="font-size:20px;font-weight:900;margin-top:12px">Loading schedule...</div>
+                </div>
             </div>
             <div id="waitCTA"></div>
         </div>
@@ -1630,16 +1629,128 @@
         function switchTab(tab) {
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             if (event && event.currentTarget) event.currentTarget.classList.add('active');
-            if (tab === 'quiz') { if (currentRound && !hasAttempted) showScreen('quizScreen'); else if (hasAttempted) showScreen('resultScreen'); else showScreen('waitingScreen') }
+            if (tab === 'quiz') { if (currentRound && !hasAttempted) showScreen('quizScreen'); else if (hasAttempted) showScreen('resultScreen'); else { showScreen('waitingScreen'); loadSchedule() } }
             else if (tab === 'wallet') { showScreen('walletScreen'); loadWallet() }
             else if (tab === 'leaderboard') { showScreen('leaderboardScreen'); loadAllTimeLeaderboard() }
             else if (tab === 'history') { showScreen('historyScreen'); loadHistory() }
         }
 
+        let nextRoundCountdownInterval = null;
+
+        async function loadSchedule() {
+            try {
+                const res = await fetch(`${API}/api/schedule`);
+                const data = await res.json();
+                const container = document.getElementById('scheduleContainer');
+
+                if (data.all_completed) {
+                    container.innerHTML = `
+                        <div class="next-round-card" style="border-color:var(--green);box-shadow:0 4px 0 var(--green-dk)">
+                            <div style="font-size:56px">&#x2705;</div>
+                            <div style="font-size:20px;font-weight:900;margin-top:12px;color:var(--green-dk)">ALL ROUNDS COMPLETED</div>
+                            <div style="color:var(--txt2);font-size:14px;font-weight:700;margin-top:8px">Come back tomorrow at 7:00 PM!</div>
+                            <div style="margin-top:16px">
+                                <button class="duo-btn blue" onclick="switchTab('history')">Meanwhile, practice with past rounds</button>
+                            </div>
+                        </div>
+                        ${buildScheduleList(data.schedule)}
+                        <div style="text-align:center;color:var(--txt3);font-size:12px;font-weight:700;margin-top:12px">All times in IST (Indian Standard Time)</div>
+                    `;
+                } else {
+                    const nextSlot = data.schedule.find(s => s.status === 'upcoming');
+                    const nextTimeStr = nextSlot ? nextSlot.time : 'Soon';
+                    const nextTime = data.next_round_utc ? new Date(data.next_round_utc + 'Z').getTime() : null;
+
+                    container.innerHTML = `
+                        <div class="next-round-card">
+                            <div style="font-size:56px">&#x23F0;</div>
+                            <div style="font-size:12px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:1.5px;margin-top:8px">NEXT ROUND</div>
+                            <div style="font-size:22px;font-weight:900;margin-top:4px">Today ${nextTimeStr}</div>
+                            <div class="countdown" id="nextRoundCountdown">--:--:--</div>
+                            <div style="color:var(--txt3);font-size:13px;font-weight:700">Starts in</div>
+                        </div>
+                        ${buildScheduleList(data.schedule)}
+                        <div style="text-align:center;color:var(--txt3);font-size:12px;font-weight:700;margin-top:12px">All times in IST (Indian Standard Time)</div>
+                    `;
+
+                    if (nextTime) {
+                        startNextRoundCountdown(nextTime);
+                    }
+                }
+
+                buildCTA('waitCTA');
+            } catch (e) {
+                console.error('Failed to load schedule:', e);
+                document.getElementById('scheduleContainer').innerHTML = `
+                    <div class="next-round-card">
+                        <div style="font-size:56px">&#x23F3;</div>
+                        <div style="font-size:20px;font-weight:900;margin-top:12px">Loading schedule...</div>
+                    </div>
+                `;
+                buildCTA('waitCTA');
+            }
+        }
+
+        function buildScheduleList(schedule) {
+            let html = '<div style="margin-top:20px;padding:16px;border:2px solid var(--border);border-radius:18px;box-shadow:0 3px 0 var(--border)">';
+            html += '<div style="font-size:14px;font-weight:900;margin-bottom:12px">&#x1F4C5; Today\'s Schedule</div>';
+
+            schedule.forEach(slot => {
+                let icon, style, badge = '';
+                if (slot.status === 'completed') {
+                    icon = '&#x2705;';
+                    style = 'color:var(--green-dk)';
+                    badge = '<span style="font-size:11px;color:var(--txt3);font-weight:700;margin-left:auto">Completed</span>';
+                } else if (slot.status === 'active') {
+                    icon = '&#x1F534;';
+                    style = 'color:var(--red);font-weight:900';
+                    badge = '<span style="font-size:11px;font-weight:800;background:var(--green);color:#fff;padding:2px 8px;border-radius:8px;margin-left:auto">LIVE NOW</span>';
+                } else {
+                    icon = '&#x23F3;';
+                    style = 'color:var(--txt)';
+                    badge = '<span style="font-size:11px;color:var(--txt3);font-weight:700;margin-left:auto">Upcoming</span>';
+                }
+
+                const activeBg = slot.status === 'active' ? 'background:var(--green-lt);border-radius:10px;padding:8px 12px;margin:4px -4px' : '';
+                html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;${activeBg}">
+                    <span style="font-size:18px">${icon}</span>
+                    <span style="font-weight:700;font-size:15px;${style}">${slot.time}</span>
+                    ${badge}
+                </div>`;
+            });
+
+            html += '</div>';
+            return html;
+        }
+
+        function startNextRoundCountdown(targetTime) {
+            clearInterval(nextRoundCountdownInterval);
+
+            nextRoundCountdownInterval = setInterval(() => {
+                const now = Date.now();
+                const remaining = targetTime - now;
+
+                if (remaining <= 0) {
+                    clearInterval(nextRoundCountdownInterval);
+                    const el = document.getElementById('nextRoundCountdown');
+                    if (el) el.textContent = 'Starting...';
+                    setTimeout(() => loadCurrentRound(), 3000);
+                    return;
+                }
+
+                const h = Math.floor(remaining / 3600000);
+                const m = Math.floor((remaining % 3600000) / 60000);
+                const s = Math.floor((remaining % 60000) / 1000);
+
+                const el = document.getElementById('nextRoundCountdown');
+                if (el) el.textContent = `${h > 0 ? h + 'h ' : ''}${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+            }, 1000);
+        }
+
         async function loadCurrentRound() {
             try {
                 const res = await fetch(`${API}/api/current-round`);
-                if (!res.ok) { showScreen('waitingScreen'); buildCTA('waitCTA'); return }
+                if (!res.ok) { showScreen('waitingScreen'); loadSchedule(); return }
                 const data = await res.json();
                 currentRound = data;
                 hasAttempted = false;
@@ -1751,7 +1862,10 @@
                 if (roundRemaining <= 0) {
                     clearInterval(roundTimerInterval);
                     document.getElementById('roundTimer').textContent = '00:00';
-                    setTimeout(() => loadCurrentRound(), 3000);
+                    if (!hasAttempted) {
+                        showScreen('waitingScreen');
+                        loadSchedule();
+                    }
                     return;
                 }
 
