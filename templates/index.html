@@ -376,6 +376,28 @@
             margin-top: 4px
         }
 
+        .share-challenge-btn {
+            width: 100%;
+            padding: 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 800;
+            font-family: inherit;
+            margin-top: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #388E3C;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .05s
+        }
+
+        .share-challenge-btn:active {
+            transform: translateY(4px);
+            box-shadow: none
+        }
+
         .explanation-card {
             background: var(--blue-lt);
             border: 2px solid var(--blue);
@@ -1285,6 +1307,9 @@
                 <div class="result-time" id="resultTime"></div>
                 <div class="result-time-label">seconds</div>
             </div>
+            <button class="share-challenge-btn" id="shareChallengeBtn" onclick="shareChallenge()">
+                🔗 Share & Challenge Friends
+            </button>
             <div class="explanation-card" id="explanationCard" style="display:none">
                 <div class="explanation-header">📖 Explanation</div>
                 <div class="explanation-text" id="explanationText"></div>
@@ -1604,6 +1629,10 @@
             const correctCount = data.results.filter(r => r).length;
             const allCorrect = data.all_correct;
 
+            // Store for sharing
+            lastScore = correctCount;
+            lastTime = ts;
+
             if (data.is_current_winner && inPrizeWindow) {
                 card.className = 'result-card win';
                 document.getElementById('resultIcon').textContent = '🏆';
@@ -1727,6 +1756,64 @@
                 else { btn.textContent = 'Submit Details 🎉'; btn.disabled = false }
             }
             catch (e) { btn.textContent = 'Submit Details 🎉'; btn.disabled = false }
+        }
+
+        let lastScore = 0;
+        let lastTime = '0.00';
+
+        async function shareChallenge() {
+            const shareText = `🧠 I scored ${lastScore}/4 in ${lastTime}s on MedicNEET Quiz!
+
+Can you beat my time? 💪
+
+Play now 👉 https://t.me/Winners_neetbot/Medicneet
+
+#NEET2026 #MedicNEET`;
+
+            // Try using navigator.share() for mobile
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        text: shareText
+                    });
+                } catch (err) {
+                    // User cancelled or error occurred, fall back to clipboard
+                    if (err.name !== 'AbortError') {
+                        copyToClipboard(shareText);
+                    }
+                }
+            } else {
+                // Fall back to clipboard copy on desktop
+                copyToClipboard(shareText);
+            }
+        }
+
+        function copyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('Copied! Share with friends');
+                }).catch(() => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                alert('Copied! Share with friends');
+            } catch (err) {
+                alert('Could not copy. Please share manually.');
+            }
+            document.body.removeChild(textarea);
         }
 
         loadCurrentRound();
