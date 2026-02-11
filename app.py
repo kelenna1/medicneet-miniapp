@@ -521,6 +521,50 @@ async def api_leaderboard():
     c.execute("SELECT user_name, COUNT(*) as wins, MIN(time_ms) as best_time, SUM(prize_amount) as total_won FROM winners GROUP BY user_id ORDER BY wins DESC, best_time ASC LIMIT 20")
     lb = [dict(r) for r in c.fetchall()]; conn.close(); return {"leaderboard":lb}
 
+@app.get("/api/leaderboard/alltime")
+async def api_leaderboard_alltime(user_id: str = None):
+    """Get top 100 players by total earnings from wallets table"""
+    conn = get_db(); c = conn.cursor()
+
+    # Get top 100 players sorted by total_earned
+    c.execute("""
+        SELECT
+            w.user_id,
+            w.user_name,
+            w.total_earned,
+            MIN(winners.time_ms) as best_time
+        FROM wallets w
+        LEFT JOIN winners ON winners.user_id = w.user_id
+        WHERE w.total_earned > 0
+        GROUP BY w.user_id
+        ORDER BY w.total_earned DESC, best_time ASC
+        LIMIT 100
+    """)
+
+    leaderboard = []
+    user_rank = None
+
+    for idx, row in enumerate(c.fetchall(), start=1):
+        entry = {
+            "rank": idx,
+            "user_id": row["user_id"],
+            "user_name": row["user_name"] or "Anonymous",
+            "total_earned": row["total_earned"],
+            "best_time": row["best_time"]
+        }
+        leaderboard.append(entry)
+
+        # Track if current user is in top 100
+        if user_id and row["user_id"] == user_id:
+            user_rank = idx
+
+    conn.close()
+
+    return {
+        "leaderboard": leaderboard,
+        "user_rank": user_rank
+    }
+
 @app.get("/api/history")
 async def api_history():
     conn = get_db(); c = conn.cursor()
