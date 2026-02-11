@@ -77,7 +77,15 @@
             font-weight: 800;
             font-size: 14px;
             color: var(--txt);
-            box-shadow: 0 3px 0 var(--gold-dk)
+            box-shadow: 0 3px 0 var(--gold-dk);
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .05s
+        }
+
+        .prize-badge:active {
+            transform: translateY(3px);
+            box-shadow: none
         }
 
         .timer-section {
@@ -1259,7 +1267,7 @@
             <div class="logo-icon">🦉</div>
             <div class="logo-text">MedicNEET</div>
         </div>
-        <div class="prize-badge">₹50 Prize</div>
+        <div class="prize-badge" id="walletBadge" onclick="switchTab('wallet')">💰 Wallet: ₹<span id="walletBalance">0</span></div>
     </div>
     <div class="timer-section" id="timerSection">
         <div>
@@ -1363,12 +1371,55 @@
             </div>
             <div id="waitCTA"></div>
         </div>
+
+        <div class="screen" id="walletScreen">
+            <h2 style="font-size:22px;font-weight:900;margin-bottom:16px">💰 Your Wallet</h2>
+
+            <div class="result-card" style="background:var(--gold-lt);border-color:var(--gold);box-shadow:0 4px 0 var(--gold-dk);margin-bottom:20px">
+                <div style="font-size:14px;color:var(--txt2);font-weight:700;margin-bottom:4px">Current Balance</div>
+                <div style="font-size:48px;font-weight:900;color:var(--txt);line-height:1">₹<span id="walletCurrentBalance">0</span></div>
+                <div style="font-size:12px;color:var(--txt3);font-weight:700;margin-top:12px">Total Earned: ₹<span id="walletTotalEarned">0</span></div>
+            </div>
+
+            <div id="withdrawSection" style="display:none;margin-bottom:20px">
+                <div class="winner-form">
+                    <h3>💸 Withdraw Money</h3>
+                    <p style="color:var(--txt2);font-size:13px;margin-bottom:14px;text-align:center">Minimum withdrawal: ₹50</p>
+                    <div class="form-group">
+                        <label>Your UPI ID</label>
+                        <input type="text" class="form-input" id="withdrawUpiInput" placeholder="name@upi or 9876543210@paytm">
+                    </div>
+                    <button class="duo-btn gold" id="withdrawBtn" onclick="submitWithdrawal()" disabled>Withdraw ₹<span id="withdrawAmount">0</span></button>
+                </div>
+            </div>
+
+            <div id="withdrawMinMessage" style="display:none;text-align:center;padding:20px;background:var(--orange-lt);border:2px solid var(--orange);border-radius:18px;margin-bottom:20px">
+                <div style="font-size:14px;font-weight:700;color:var(--orange)">Earn ₹<span id="needMoreAmount">50</span> more to withdraw</div>
+            </div>
+
+            <div id="withdrawSuccessMessage" style="display:none;text-align:center;padding:20px;background:var(--green-lt);border:2px solid var(--green);border-radius:18px;margin-bottom:20px">
+                <div style="font-size:48px;margin-bottom:12px">✅</div>
+                <h3 style="margin-bottom:8px;font-size:20px">Withdrawal Requested!</h3>
+                <p style="color:var(--txt2);font-size:14px;font-weight:600">You'll receive payment within 24 hours</p>
+            </div>
+
+            <div class="lb-section">
+                <div class="lb-title">💵 Transaction History</div>
+                <div id="transactionsList">
+                    <p style="color:var(--txt3);text-align:center;padding:20px;font-weight:700">No transactions yet</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="bottom-nav">
         <div class="nav-item active" onclick="switchTab('quiz')">
             <div class="nav-icon">⚡</div>
             <div class="nav-label">Quiz</div>
+        </div>
+        <div class="nav-item" onclick="switchTab('wallet')">
+            <div class="nav-icon">💰</div>
+            <div class="nav-label">Wallet</div>
         </div>
         <div class="nav-item" onclick="switchTab('leaderboard')">
             <div class="nav-icon">🏆</div>
@@ -1429,9 +1480,12 @@
 
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id)?.classList.add('active') }
         function switchTab(tab) {
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); event.currentTarget.classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            if (event && event.currentTarget) event.currentTarget.classList.add('active');
             if (tab === 'quiz') { if (currentRound && !hasAttempted) showScreen('quizScreen'); else if (hasAttempted) showScreen('resultScreen'); else showScreen('waitingScreen') }
-            else if (tab === 'leaderboard') { showScreen('leaderboardScreen'); loadAllTimeLeaderboard() } else if (tab === 'history') { showScreen('historyScreen'); loadHistory() }
+            else if (tab === 'wallet') { showScreen('walletScreen'); loadWallet() }
+            else if (tab === 'leaderboard') { showScreen('leaderboardScreen'); loadAllTimeLeaderboard() }
+            else if (tab === 'history') { showScreen('historyScreen'); loadHistory() }
         }
 
         async function loadCurrentRound() {
@@ -1740,6 +1794,11 @@
             buildCTA('appCTA');
             buildRoundLeaderboard(data.leaderboard);
 
+            // Reload wallet if user won
+            if (iw || allCorrect) {
+                loadWallet();
+            }
+
             if (tg?.HapticFeedback) {
                 if (data.is_current_winner) tg.HapticFeedback.notificationOccurred('success');
                 else if (allCorrect) tg.HapticFeedback.notificationOccurred('warning');
@@ -1862,7 +1921,119 @@ Play now 👉 https://t.me/Winners_neetbot/Medicneet
             document.body.removeChild(textarea);
         }
 
+        async function loadWallet() {
+            try {
+                const res = await fetch(`${API}/api/wallet?user_id=${userId}`);
+                const data = await res.json();
+
+                const balance = data.balance || 0;
+                const totalEarned = data.total_earned || 0;
+
+                // Update header badge
+                document.getElementById('walletBalance').textContent = balance;
+
+                // Update wallet screen
+                document.getElementById('walletCurrentBalance').textContent = balance;
+                document.getElementById('walletTotalEarned').textContent = totalEarned;
+
+                // Show/hide withdraw section based on balance
+                if (balance >= 50) {
+                    document.getElementById('withdrawSection').style.display = 'block';
+                    document.getElementById('withdrawMinMessage').style.display = 'none';
+                    document.getElementById('withdrawAmount').textContent = balance;
+                    document.getElementById('withdrawUpiInput').value = data.upi_id || '';
+                    checkWithdrawReady();
+                } else {
+                    document.getElementById('withdrawSection').style.display = 'none';
+                    document.getElementById('withdrawMinMessage').style.display = 'block';
+                    document.getElementById('needMoreAmount').textContent = 50 - balance;
+                }
+
+                // Display transactions
+                const txList = document.getElementById('transactionsList');
+                if (data.transactions && data.transactions.length > 0) {
+                    let txHTML = '';
+                    data.transactions.forEach(tx => {
+                        const date = new Date(tx.created_at).toLocaleDateString();
+                        txHTML += `<div class="lb-row" style="background:var(--green-lt);border-color:var(--green)">
+                            <div style="flex:1">
+                                <div style="font-weight:700;font-size:14px">Round #${tx.round_id || '?'}</div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700">${date}</div>
+                            </div>
+                            <div style="font-weight:800;font-size:16px;color:var(--green)">+₹${tx.amount}</div>
+                        </div>`;
+                    });
+                    txList.innerHTML = txHTML;
+                } else {
+                    txList.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:20px;font-weight:700">No transactions yet</p>';
+                }
+            } catch (e) {
+                console.error('Failed to load wallet:', e);
+            }
+        }
+
+        function checkWithdrawReady() {
+            const upiInput = document.getElementById('withdrawUpiInput');
+            const withdrawBtn = document.getElementById('withdrawBtn');
+            if (upiInput && withdrawBtn) {
+                withdrawBtn.disabled = !upiInput.value.trim() || !upiInput.value.includes('@');
+            }
+        }
+
+        document.getElementById('withdrawUpiInput')?.addEventListener('input', checkWithdrawReady);
+
+        async function submitWithdrawal() {
+            const upiId = document.getElementById('withdrawUpiInput').value.trim();
+            if (!upiId || !upiId.includes('@')) {
+                alert('Please enter a valid UPI ID');
+                return;
+            }
+
+            const withdrawBtn = document.getElementById('withdrawBtn');
+            withdrawBtn.disabled = true;
+            withdrawBtn.textContent = 'Processing...';
+
+            try {
+                const res = await fetch(`${API}/api/withdraw`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        user_name: userName,
+                        upi_id: upiId
+                    })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    // Hide withdraw form, show success message
+                    document.getElementById('withdrawSection').style.display = 'none';
+                    document.getElementById('withdrawSuccessMessage').style.display = 'block';
+
+                    // Update balance
+                    document.getElementById('walletBalance').textContent = '0';
+                    document.getElementById('walletCurrentBalance').textContent = '0';
+
+                    // Reload wallet after 3 seconds
+                    setTimeout(() => {
+                        loadWallet();
+                    }, 3000);
+                } else {
+                    alert(data.detail || 'Withdrawal failed. Please try again.');
+                    withdrawBtn.disabled = false;
+                    withdrawBtn.textContent = `Withdraw ₹${document.getElementById('withdrawAmount').textContent}`;
+                }
+            } catch (e) {
+                console.error('Withdrawal error:', e);
+                alert('Withdrawal failed. Please try again.');
+                withdrawBtn.disabled = false;
+                withdrawBtn.textContent = `Withdraw ₹${document.getElementById('withdrawAmount').textContent}`;
+            }
+        }
+
         loadCurrentRound();
+        loadWallet();
     </script>
 </body>
 
