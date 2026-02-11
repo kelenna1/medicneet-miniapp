@@ -1327,6 +1327,63 @@
         .bottom-nav {
             transition: all 0.2s ease;
         }
+
+        /* Practice Mode Styles */
+        .practice-round-card {
+            background: var(--bg2);
+            border: 2px solid var(--border);
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 3px 0 var(--border);
+        }
+
+        .practice-round-header {
+            font-size: 16px;
+            font-weight: 900;
+            margin-bottom: 8px;
+            color: var(--txt);
+        }
+
+        .practice-round-info {
+            font-size: 13px;
+            color: var(--txt2);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .practice-round-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 800;
+            font-family: inherit;
+            cursor: pointer;
+            box-shadow: 0 3px 0 var(--blue-dk);
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .05s;
+            margin-top: 10px;
+        }
+
+        .practice-round-btn:active {
+            transform: translateY(3px);
+            box-shadow: none;
+        }
+
+        .practice-badge {
+            display: inline-block;
+            background: var(--blue);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 
@@ -1447,6 +1504,46 @@
             </div>
         </div>
 
+        <div class="screen" id="practiceScreen">
+            <h2 style="font-size:22px;font-weight:900;margin-bottom:16px">📚 PRACTICE MODE</h2>
+            <p style="color:var(--txt2);font-size:14px;font-weight:600;margin-bottom:16px">Solve past rounds (no prizes)</p>
+            <div id="practiceRoundsList">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen" id="practiceQuizScreen">
+            <div style="background:var(--blue-lt);padding:12px 16px;text-align:center;border-radius:16px;margin-bottom:16px;border:2px solid var(--blue)">
+                <span style="font-weight:800;color:var(--blue-dk);font-size:14px">📝 PRACTICE MODE - Round #<span id="practiceRoundNumber">--</span></span>
+                <div style="font-size:12px;color:var(--txt2);font-weight:700;margin-top:4px">No prizes - Practice only</div>
+            </div>
+            <div class="stopwatch">
+                <div class="stopwatch-value" id="practiceStopwatch">0.00</div>
+                <div class="stopwatch-label">Your time (seconds)</div>
+            </div>
+            <div id="practiceQuestionsContainer"></div>
+            <button class="duo-btn blue" id="practiceSubmitBtn" onclick="submitPracticeAnswers()" disabled style="margin-top:20px">Submit All Answers</button>
+        </div>
+
+        <div class="screen" id="practiceResultScreen">
+            <div class="result-card" id="practiceResultCard" style="background:var(--blue-lt);border-color:var(--blue);box-shadow:0 4px 0 var(--blue-dk)">
+                <div class="result-icon">📝</div>
+                <div class="result-title" style="color:var(--blue-dk)">Practice Complete!</div>
+                <div class="result-sub" id="practiceResultSub">Your Score: <span id="practiceScore">--</span>/4</div>
+                <div class="result-time" style="color:var(--blue-dk)" id="practiceResultTime">0.0</div>
+                <div class="result-time-label">seconds</div>
+            </div>
+            <div style="background:var(--bg2);border:2px solid var(--border);border-radius:18px;padding:16px;margin-bottom:16px;box-shadow:0 3px 0 var(--border)">
+                <div style="font-size:14px;font-weight:800;margin-bottom:8px">🏆 Round Winner</div>
+                <div style="font-size:16px;font-weight:700;color:var(--green-dk)" id="practiceWinnerName">--</div>
+                <div style="font-size:14px;color:var(--txt2);font-weight:600;margin-top:4px" id="practiceWinnerTime">--</div>
+            </div>
+            <div id="practiceQuestionsReview"></div>
+            <button class="duo-btn blue" onclick="switchTab('practice')" style="margin-top:16px">Back to Practice Mode</button>
+        </div>
+
         <div class="screen" id="waitingScreen">
             <div id="scheduleContainer">
                 <div class="next-round-card">
@@ -1564,6 +1661,10 @@
             <div class="nav-icon">⚡</div>
             <div class="nav-label">Quiz</div>
         </div>
+        <div class="nav-item" onclick="switchTab('practice')">
+            <div class="nav-icon">📚</div>
+            <div class="nav-label">Practice</div>
+        </div>
         <div class="nav-item" onclick="switchTab('wallet')">
             <div class="nav-icon">💰</div>
             <div class="nav-label">Wallet</div>
@@ -1633,6 +1734,7 @@
             else if (tab === 'wallet') { showScreen('walletScreen'); loadWallet() }
             else if (tab === 'leaderboard') { showScreen('leaderboardScreen'); loadAllTimeLeaderboard() }
             else if (tab === 'history') { showScreen('historyScreen'); loadHistory() }
+            else if (tab === 'practice') { showScreen('practiceScreen'); loadPracticeRounds() }
         }
 
         let nextRoundCountdownInterval = null;
@@ -2178,6 +2280,215 @@
                 if (!data.history?.length) { c.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No rounds yet.</p>'; return }
                 let h = ''; data.history.forEach(e => { h += `<div class="lb-row" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="font-size:12px;color:var(--txt3);font-weight:700">${e.chapter || 'Biology'}</div><div style="font-size:14px;font-weight:700">${e.question.substring(0, 80)}...</div><div style="display:flex;justify-content:space-between;width:100%"><span style="color:var(--gold-dk);font-weight:800">🏆 ${e.winner_name || 'No winner'}</span><span style="color:var(--green);font-weight:800">${e.winner_time_ms ? (e.winner_time_ms / 1000).toFixed(1) + 's' : '--'}</span></div></div>` }); c.innerHTML = h
             } catch (e) { }
+        }
+
+        // ─── PRACTICE MODE FUNCTIONS ─────────────────────
+        let practiceRoundData = null;
+        let practiceAnswers = [null, null, null, null];
+        let practiceStopwatchStart = null;
+        let practiceStopwatchInterval = null;
+
+        async function loadPracticeRounds() {
+            try {
+                const res = await fetch(`${API}/api/rounds/history`);
+                const data = await res.json();
+                const container = document.getElementById('practiceRoundsList');
+
+                if (!data.rounds || data.rounds.length === 0) {
+                    container.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No past rounds available yet.</p>';
+                    return;
+                }
+
+                container.innerHTML = data.rounds.map(round => {
+                    const date = new Date(round.date + 'Z');
+                    const dateStr = date.toLocaleString('en-IN', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    const winnerTime = round.winning_time ? (round.winning_time / 1000).toFixed(1) + 's' : 'N/A';
+
+                    return `
+                        <div class="practice-round-card">
+                            <div class="practice-round-header">Round #${round.round_id} - ${dateStr}</div>
+                            <div class="practice-round-info">🏆 Winner: ${round.winner_name} (${winnerTime})</div>
+                            <div class="practice-round-info">👥 ${round.total_participants} participants</div>
+                            <button class="practice-round-btn" onclick="startPracticeRound(${round.round_id})">Practice This Round</button>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load practice rounds:', e);
+                document.getElementById('practiceRoundsList').innerHTML = '<p style="color:var(--red);text-align:center;padding:40px;font-weight:700">Failed to load rounds. Please try again.</p>';
+            }
+        }
+
+        async function startPracticeRound(roundId) {
+            try {
+                showScreen('loadingScreen');
+                const res = await fetch(`${API}/api/rounds/practice?round_id=${roundId}`);
+                const data = await res.json();
+
+                practiceRoundData = data;
+                practiceAnswers = [null, null, null, null];
+
+                document.getElementById('practiceRoundNumber').textContent = roundId;
+
+                const container = document.getElementById('practiceQuestionsContainer');
+                container.innerHTML = data.questions.map((q, idx) => `
+                    <div class="question-block" id="practice-q-${idx}">
+                        <div class="question-number">Question ${idx + 1}/4</div>
+                        <div class="question-chapter">${q.chapter}</div>
+                        <div class="question-text">${q.text}</div>
+                        <div class="options">
+                            <button class="option-btn" onclick="selectPracticeAnswer(${idx}, 'A')">
+                                <div class="opt-letter">A</div>
+                                <div>${q.option_a}</div>
+                            </button>
+                            <button class="option-btn" onclick="selectPracticeAnswer(${idx}, 'B')">
+                                <div class="opt-letter">B</div>
+                                <div>${q.option_b}</div>
+                            </button>
+                            <button class="option-btn" onclick="selectPracticeAnswer(${idx}, 'C')">
+                                <div class="opt-letter">C</div>
+                                <div>${q.option_c}</div>
+                            </button>
+                            <button class="option-btn" onclick="selectPracticeAnswer(${idx}, 'D')">
+                                <div class="opt-letter">D</div>
+                                <div>${q.option_d}</div>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                document.getElementById('practiceSubmitBtn').disabled = true;
+                showScreen('practiceQuizScreen');
+
+                // Start stopwatch
+                practiceStopwatchStart = Date.now();
+                clearInterval(practiceStopwatchInterval);
+                practiceStopwatchInterval = setInterval(() => {
+                    const elapsed = (Date.now() - practiceStopwatchStart) / 1000;
+                    document.getElementById('practiceStopwatch').textContent = elapsed.toFixed(2);
+                }, 10);
+
+            } catch (e) {
+                console.error('Failed to start practice round:', e);
+                alert('Failed to load practice round. Please try again.');
+                showScreen('practiceScreen');
+            }
+        }
+
+        function selectPracticeAnswer(questionIndex, answer) {
+            practiceAnswers[questionIndex] = answer;
+
+            // Update UI
+            const block = document.getElementById(`practice-q-${questionIndex}`);
+            const buttons = block.querySelectorAll('.option-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('correct', 'wrong');
+                const letter = btn.querySelector('.opt-letter').textContent;
+                if (letter === answer) {
+                    btn.style.borderColor = 'var(--blue)';
+                    btn.style.background = 'var(--blue-lt)';
+                    btn.querySelector('.opt-letter').style.background = 'var(--blue)';
+                    btn.querySelector('.opt-letter').style.borderColor = 'var(--blue-dk)';
+                    btn.querySelector('.opt-letter').style.color = '#fff';
+                } else {
+                    btn.style.borderColor = '';
+                    btn.style.background = '';
+                    btn.querySelector('.opt-letter').style.background = '';
+                    btn.querySelector('.opt-letter').style.borderColor = '';
+                    btn.querySelector('.opt-letter').style.color = '';
+                }
+            });
+
+            block.classList.add('answered');
+
+            // Enable submit if all answered
+            const allAnswered = practiceAnswers.every(a => a !== null);
+            document.getElementById('practiceSubmitBtn').disabled = !allAnswered;
+        }
+
+        async function submitPracticeAnswers() {
+            clearInterval(practiceStopwatchInterval);
+            const timeMs = Date.now() - practiceStopwatchStart;
+
+            try {
+                const res = await fetch(`${API}/api/rounds/practice/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        round_id: practiceRoundData.round_id,
+                        answers: practiceAnswers,
+                        time_ms: timeMs
+                    })
+                });
+
+                const data = await res.json();
+
+                // Show results
+                document.getElementById('practiceScore').textContent = data.score;
+                document.getElementById('practiceResultSub').innerHTML = `Your Score: <span style="font-weight:900;color:var(--blue-dk)">${data.score}/4</span>`;
+                document.getElementById('practiceResultTime').textContent = (timeMs / 1000).toFixed(1);
+
+                // Show winner info
+                if (data.round_winner_name) {
+                    document.getElementById('practiceWinnerName').textContent = data.round_winner_name;
+                    const winnerTime = data.round_winner_time_ms ? (data.round_winner_time_ms / 1000).toFixed(1) + 's' : 'N/A';
+                    document.getElementById('practiceWinnerTime').textContent = `Completed in ${winnerTime}`;
+                } else {
+                    document.getElementById('practiceWinnerName').textContent = 'No winner';
+                    document.getElementById('practiceWinnerTime').textContent = 'Nobody scored 4/4';
+                }
+
+                // Show questions review
+                const reviewContainer = document.getElementById('practiceQuestionsReview');
+                reviewContainer.innerHTML = practiceRoundData.questions.map((q, idx) => {
+                    const userAnswer = practiceAnswers[idx];
+                    const correctAnswer = data.correct_answers[idx];
+                    const isCorrect = data.results[idx];
+                    const explanation = data.explanations[idx];
+
+                    return `
+                        <div class="question-block ${isCorrect ? 'correct' : 'incorrect'}">
+                            <div class="question-number">Question ${idx + 1}/4 ${isCorrect ? '✅' : '❌'}</div>
+                            <div class="question-chapter">${q.chapter}</div>
+                            <div class="question-text">${q.text}</div>
+                            <div class="options">
+                                ${['A', 'B', 'C', 'D'].map(letter => {
+                                    const isUserAnswer = letter === userAnswer;
+                                    const isCorrectAnswer = letter === correctAnswer;
+                                    let className = 'option-btn';
+                                    if (isCorrectAnswer) className += ' correct';
+                                    else if (isUserAnswer && !isCorrect) className += ' wrong';
+
+                                    const optionText = q[`option_${letter.toLowerCase()}`];
+                                    return `
+                                        <div class="${className}">
+                                            <div class="opt-letter">${letter}</div>
+                                            <div>${optionText}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            ${explanation ? `
+                                <div class="explanation-card">
+                                    <div class="explanation-header">📖 Explanation</div>
+                                    <div class="explanation-text">${explanation}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+
+                showScreen('practiceResultScreen');
+
+            } catch (e) {
+                console.error('Failed to submit practice answers:', e);
+                alert('Failed to submit answers. Please try again.');
+            }
         }
 
         function handlePhotoUpload(input) {

@@ -844,3 +844,143 @@ async def api_stats(user_id: str):
         "rounds_won": rounds_won,
         "win_rate": win_rate
     }
+
+@app.get("/api/rounds/history")
+async def api_rounds_history():
+    """Get list of past rounds with winner info and participant count"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("""
+        SELECT
+            r.id as round_id,
+            r.started_at as date,
+            r.winner_name,
+            r.winner_time_ms as winning_time,
+            COUNT(DISTINCT a.user_id) as total_participants
+        FROM rounds r
+        LEFT JOIN attempts a ON a.round_id = r.id
+        WHERE r.announced = 1
+        GROUP BY r.id
+        ORDER BY r.started_at DESC
+        LIMIT 50
+    """)
+    rounds = []
+    for row in c.fetchall():
+        rounds.append({
+            "round_id": row["round_id"],
+            "date": row["date"],
+            "winner_name": row["winner_name"] or "No winner",
+            "winning_time": row["winning_time"],
+            "total_participants": row["total_participants"]
+        })
+    conn.close()
+    return {"rounds": rounds}
+
+@app.get("/api/rounds/practice")
+async def api_rounds_practice(round_id: int):
+    """Get questions for a specific past round for practice"""
+    conn = get_db(); c = conn.cursor()
+
+    # Get round info
+    c.execute("SELECT * FROM rounds WHERE id = ? AND announced = 1", (round_id,))
+    rnd = c.fetchone()
+    if not rnd:
+        conn.close()
+        raise HTTPException(404, "Round not found")
+
+    # Fetch all 4 questions with correct answers and explanations
+    q_ids = [rnd["question_1_id"], rnd["question_2_id"], rnd["question_3_id"], rnd["question_4_id"]]
+    c.execute("SELECT * FROM questions WHERE id IN (?,?,?,?)", q_ids)
+    questions_raw = c.fetchall()
+    questions_dict = {q["id"]: q for q in questions_raw}
+
+    questions = [
+        {
+            "text": questions_dict[q_id]["question"],
+            "option_a": questions_dict[q_id]["option_a"],
+            "option_b": questions_dict[q_id]["option_b"],
+            "option_c": questions_dict[q_id]["option_c"],
+            "option_d": questions_dict[q_id]["option_d"],
+            "correct_answer": questions_dict[q_id]["correct_answer"],
+            "explanation": questions_dict[q_id]["explanation"] or "",
+            "chapter": questions_dict[q_id]["chapter"]
+        }
+        for q_id in q_ids if q_id in questions_dict
+    ]
+
+    # Get round winner info
+    c.execute("SELECT COUNT(DISTINCT user_id) as cnt FROM attempts WHERE round_id = ?", (round_id,))
+    total_participants = c.fetchone()["cnt"]
+
+    conn.close()
+
+    return {
+        "round_id": rnd["id"],
+        "date": rnd["started_at"],
+        "winner_name": rnd["winner_name"],
+        "winner_time_ms": rnd["winner_time_ms"],
+        "total_participants": total_participants,
+        "questions": questions
+    }
+
+@app.post("/api/rounds/practice/submit")
+async def api_rounds_practice_submit(request: Request):
+    """Submit practice answers (no prizes, just show results)"""
+    data = await request.json()
+    round_id = data.get("round_id")
+    answers = data.get("answers", [])  # Array of 4 answers
+    time_ms = int(data.get("time_ms", 0))
+
+    if not round_id or not isinstance(answers, list) or len(answers) != 4:
+        raise HTTPException(400, "Missing fields or invalid answers format")
+
+    # Normalize answers
+    answers = [str(a).upper().strip() for a in answers]
+
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT * FROM rounds WHERE id = ? AND announced = 1", (round_id,))
+    rnd = c.fetchone()
+    if not rnd:
+        conn.close()
+        raise HTTPException(404, "Round not found")
+
+    # Fetch all 4 questions and their correct answers
+    q_ids = [rnd["question_1_id"], rnd["question_2_id"], rnd["question_3_id"], rnd["question_4_id"]]
+    c.execute("SELECT id, correct_answer, explanation FROM questions WHERE id IN (?,?,?,?)", q_ids)
+    questions_raw = c.fetchall()
+    questions_dict = {q["id"]: q for q in questions_raw}
+
+    # Check each answer
+    correct_answers = []
+    explanations = []
+    results = []
+    score = 0
+
+    for i, q_id in enumerate(q_ids):
+        if q_id in questions_dict:
+            correct_ans = questions_dict[q_id]["correct_answer"]
+            user_ans = answers[i] if i < len(answers) else ""
+            is_correct = user_ans == correct_ans
+
+            correct_answers.append(correct_ans)
+            explanations.append(questions_dict[q_id]["explanation"] or "")
+            results.append(is_correct)
+
+            if is_correct:
+                score += 1
+        else:
+            correct_answers.append("?")
+            explanations.append("")
+            results.append(False)
+
+    conn.close()
+
+    return {
+        "score": score,
+        "total": 4,
+        "results": results,
+        "correct_answers": correct_answers,
+        "explanations": explanations,
+        "your_time_ms": time_ms,
+        "round_winner_name": rnd["winner_name"],
+        "round_winner_time_ms": rnd["winner_time_ms"]
+    }
