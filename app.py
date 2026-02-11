@@ -186,32 +186,48 @@ async def send_winner_to_channel(round_id):
     c = conn.cursor()
     c.execute("SELECT user_name, time_ms, prize_amount FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10", (round_id,))
     winners = c.fetchall()
+
+    # Get total participants count
+    c.execute("SELECT COUNT(DISTINCT user_id) as cnt FROM attempts WHERE round_id = ?", (round_id,))
+    total_participants = c.fetchone()["cnt"]
+
     conn.close()
 
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}"
+    button = {"inline_keyboard": [[{"text": "🧠 Play Next Round", "url": "https://t.me/Winners_neetbot/Medicneet"}]]}
+
     if not winners:
-        return  # No winners to announce
+        # No winners - nobody got 4/4
+        text = f"""🏆 <b>ROUND #{round_id} RESULTS</b>
 
-    # Build winner list
-    winner_lines = []
-    for i, w in enumerate(winners, start=1):
-        name = w["user_name"] or "Anonymous"
-        time_sec = w["time_ms"] / 1000
-        prize = w["prize_amount"]
-        winner_lines.append(f"{i}. {name} — 4/4 in {time_sec:.1f}s — ₹{prize} ✅")
+No winners this round! 😢
+Nobody scored 4/4 correct.
 
-    winner_text = "\n".join(winner_lines)
-    total_prize = len(winners) * 5
+Better luck next time!
+🔥 Next round in 30 mins!"""
+    else:
+        # Build winner list
+        winner_lines = []
+        for i, w in enumerate(winners, start=1):
+            name = w["user_name"] or "Anonymous"
+            time_sec = w["time_ms"] / 1000
+            prize = w["prize_amount"]
+            winner_lines.append(f"{i}. {name} — 4/4 in {time_sec:.1f}s — ₹{prize} ✅")
 
-    text = f"""🏆 <b>ROUND #{round_id} RESULTS</b>
+        winner_text = "\n".join(winner_lines)
+        total_prize = sum(w["prize_amount"] for w in winners)
+
+        text = f"""🏆 <b>ROUND #{round_id} RESULTS</b>
 
 {winner_text}
 
-💰 Total: ₹{total_prize}
-🔥 Next round in {QUESTION_INTERVAL_HOURS}h!"""
+💰 Total paid: ₹{total_prize}
+👥 Total participants: {total_participants}
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}"
+🔥 Next round in 30 mins!"""
+
     async with httpx.AsyncClient() as client:
-        await client.post(f"{url}/sendMessage", data={"chat_id":CHANNEL_ID,"text":text,"parse_mode":"HTML"})
+        await client.post(f"{url}/sendMessage", json={"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML", "reply_markup": button})
 
 async def send_new_round_to_channel():
     """Post new question alert with quiz button to channel"""
@@ -313,11 +329,10 @@ async def round_manager():
     while True:
         try:
             conn = get_db(); c = conn.cursor(); now = datetime.utcnow(); now_str = now.isoformat()
-            c.execute("SELECT r.id FROM rounds r WHERE r.prize_ends_at <= ? AND r.announced = 0 AND r.winner_user_id IS NOT NULL", (now_str,))
+            c.execute("SELECT r.id FROM rounds r WHERE r.prize_ends_at <= ? AND r.announced = 0", (now_str,))
             for rnd in c.fetchall():
                 await send_winner_to_channel(rnd["id"])
                 c.execute("UPDATE rounds SET announced = 1 WHERE id = ?", (rnd["id"],))
-            c.execute("UPDATE rounds SET announced = 1 WHERE prize_ends_at <= ? AND announced = 0 AND winner_user_id IS NULL", (now_str,))
             conn.commit(); conn.close()
             # Check for new round and announce if created
             rnd, is_new = get_or_create_current_round(return_is_new=True)
