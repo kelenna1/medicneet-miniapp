@@ -1387,6 +1387,7 @@
         const APP_STATUS = '{{ app_status }}', PLAYSTORE_LINK = '{{ playstore_link }}';
         let currentRound = null, stopwatchInterval = null, stopwatchStart = null, roundTimerInterval = null, hasAttempted = false, selectedPhoto = null;
         let userAnswers = [null, null, null, null];  // Track answers for 4 questions
+        let submitCountdownInterval = null, submitTimeRemaining = 60;  // 60 second countdown timer
         const API = '';
 
         // ─── CTA BUILDER (Launching Soon vs Live) ─────────────────────
@@ -1483,6 +1484,7 @@
                 document.getElementById('submitBtn').disabled = true;
                 showScreen('quizScreen');
                 startStopwatch();
+                startSubmitCountdown();
             } catch (e) {
                 console.error(e);
                 showScreen('waitingScreen');
@@ -1495,6 +1497,43 @@
             stopwatchInterval = setInterval(() => { document.getElementById('stopwatch').textContent = ((performance.now() - stopwatchStart) / 1000).toFixed(2) }, 50)
         }
         function stopStopwatch() { clearInterval(stopwatchInterval); return Math.round(performance.now() - stopwatchStart) }
+
+        function startSubmitCountdown() {
+            submitTimeRemaining = 60;
+            clearInterval(submitCountdownInterval);
+            const submitBtn = document.getElementById('submitBtn');
+
+            // Initial state - disabled with countdown
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.cursor = 'not-allowed';
+            updateSubmitButtonText();
+
+            submitCountdownInterval = setInterval(() => {
+                submitTimeRemaining--;
+
+                if (submitTimeRemaining > 0) {
+                    updateSubmitButtonText();
+                } else {
+                    // Countdown complete
+                    clearInterval(submitCountdownInterval);
+                    submitBtn.textContent = 'Submit All Answers';
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+
+                    // Enable button only if all questions are answered
+                    const allAnswered = userAnswers.every(a => a !== null);
+                    submitBtn.disabled = !allAnswered;
+                }
+            }, 1000);
+        }
+
+        function updateSubmitButtonText() {
+            const submitBtn = document.getElementById('submitBtn');
+            const seconds = submitTimeRemaining;
+            const display = `0:${String(seconds).padStart(2, '0')}`;
+            submitBtn.textContent = `Submit in ${display}`;
+        }
 
         let prizeWindowActive = true;
         function startPrizeTimer(prizeEndsAt, roundEndsAt) {
@@ -1560,9 +1599,16 @@
             // Mark question block as answered
             questionBlock.classList.add('answered');
 
-            // Enable submit button if all 4 questions are answered
+            // Enable submit button if all 4 questions are answered AND countdown is complete
             const allAnswered = userAnswers.every(a => a !== null);
-            document.getElementById('submitBtn').disabled = !allAnswered;
+            const submitBtn = document.getElementById('submitBtn');
+
+            // Only enable if countdown is complete (submitTimeRemaining <= 0)
+            if (submitTimeRemaining <= 0 && allAnswered) {
+                submitBtn.disabled = false;
+            } else {
+                submitBtn.disabled = true;
+            }
         }
 
         async function submitAllAnswers() {
