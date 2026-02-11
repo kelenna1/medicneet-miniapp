@@ -681,3 +681,67 @@ async def api_withdraw(request: Request):
         "message": f"Withdrawal requested! You'll receive ₹{balance} within 24 hours",
         "amount": balance
     }
+
+@app.get("/api/stats")
+async def api_stats(user_id: str):
+    """Get user's personal stats including rank and performance metrics"""
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+
+    conn = get_db(); c = conn.cursor()
+
+    # Get wallet info (balance and total_earned)
+    c.execute("SELECT balance, total_earned FROM wallets WHERE user_id = ?", (user_id,))
+    wallet = c.fetchone()
+
+    current_balance = wallet["balance"] if wallet else 0
+    total_earned = wallet["total_earned"] if wallet else 0
+
+    # Get best time from winners table
+    c.execute("SELECT MIN(time_ms) as best_time FROM winners WHERE user_id = ?", (user_id,))
+    best_time_row = c.fetchone()
+    best_time = best_time_row["best_time"] if best_time_row and best_time_row["best_time"] else None
+
+    # Get rounds played (distinct rounds in attempts table)
+    c.execute("SELECT COUNT(DISTINCT round_id) as rounds_played FROM attempts WHERE user_id = ?", (user_id,))
+    rounds_played_row = c.fetchone()
+    rounds_played = rounds_played_row["rounds_played"] if rounds_played_row else 0
+
+    # Get rounds won (count of wins in winners table)
+    c.execute("SELECT COUNT(*) as rounds_won FROM winners WHERE user_id = ?", (user_id,))
+    rounds_won_row = c.fetchone()
+    rounds_won = rounds_won_row["rounds_won"] if rounds_won_row else 0
+
+    # Calculate win rate
+    win_rate = round((rounds_won / rounds_played * 100) if rounds_played > 0 else 0, 1)
+
+    # Calculate rank based on total_earned (same logic as leaderboard)
+    c.execute("""
+        SELECT COUNT(*) + 1 as rank
+        FROM wallets w1
+        WHERE w1.total_earned > (
+            SELECT COALESCE(total_earned, 0)
+            FROM wallets
+            WHERE user_id = ?
+        )
+    """, (user_id,))
+    rank_row = c.fetchone()
+    rank = rank_row["rank"] if rank_row else None
+
+    # Get total number of players with earnings
+    c.execute("SELECT COUNT(*) as total_players FROM wallets WHERE total_earned > 0")
+    total_players_row = c.fetchone()
+    total_players = total_players_row["total_players"] if total_players_row else 0
+
+    conn.close()
+
+    return {
+        "rank": rank,
+        "total_players": total_players,
+        "total_earned": total_earned,
+        "current_balance": current_balance,
+        "best_time": best_time,
+        "rounds_played": rounds_played,
+        "rounds_won": rounds_won,
+        "win_rate": win_rate
+    }
