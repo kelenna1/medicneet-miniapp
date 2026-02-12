@@ -2109,7 +2109,7 @@
                 document.getElementById('resultTitle').textContent = "YOU'RE WINNING!";
                 document.getElementById('resultTitle').className = 'result-title win-text';
                 document.getElementById('resultSub').textContent = 'Solved 4/4 correctly — fastest time! Top 10 win ₹5!';
-                document.getElementById('winnerForm').style.display = 'block';
+                document.getElementById('winnerForm').style.display = 'none';
                 document.getElementById('resultTime').style.color = 'var(--green)';
             }
             else if (allCorrect && inPrizeWindow) {
@@ -2203,7 +2203,7 @@
             buildRoundLeaderboard(data.leaderboard);
 
             // Reload wallet if user won
-            if (iw || allCorrect) {
+            if (data.is_current_winner || allCorrect) {
                 loadWallet();
             }
 
