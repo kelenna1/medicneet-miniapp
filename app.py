@@ -725,9 +725,8 @@ async def api_wallet(user_id: str):
     wallet = c.fetchone()
 
     if not wallet:
-        # Create wallet if doesn't exist
         conn.close()
-    return {"balance": 0, "total_earned": 0, "upi_id": None, "transactions": []}
+        return {"balance": 0, "total_earned": 0, "upi_id": None, "transactions": []}
 
     # Get transactions (wins only)
     c.execute("SELECT amount, type, round_id, created_at FROM transactions WHERE user_id = ? AND type = 'win' ORDER BY created_at DESC LIMIT 50", (user_id,))
