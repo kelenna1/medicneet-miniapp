@@ -121,7 +121,7 @@ def sync_questions_from_sheet():
         rows = sheet.get_all_records(); conn = get_db(); c = conn.cursor(); count = 0
         for i, row in enumerate(rows, start=2):
             try:
-                c.execute("INSERT OR REPLACE INTO questions (question,option_a,option_b,option_c,option_d,correct_answer,explanation,chapter,difficulty,sheet_row) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                c.execute("INSERT INTO questions (question,option_a,option_b,option_c,option_d,correct_answer,explanation,chapter,difficulty,sheet_row) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(sheet_row) DO UPDATE SET question=excluded.question,option_a=excluded.option_a,option_b=excluded.option_b,option_c=excluded.option_c,option_d=excluded.option_d,correct_answer=excluded.correct_answer,explanation=excluded.explanation,chapter=excluded.chapter,difficulty=excluded.difficulty",
                     (str(row.get("Question","")),str(row.get("Option A","")),str(row.get("Option B","")),str(row.get("Option C","")),str(row.get("Option D","")),
                      str(row.get("Correct Answer","")).upper().strip(),str(row.get("Explanation","")),str(row.get("Chapter","")),str(row.get("Difficulty","")),i))
                 count += 1
@@ -146,6 +146,19 @@ def is_valid_photo(fp):
         return ok and 10*1024 < os.path.getsize(fp) < 5*1024*1024
     except: return False
 
+import random as _random
+
+def shuffle_options(q_id, round_id, option_a, option_b, option_c, option_d, correct_answer):
+    """Shuffle options deterministically based on round_id + question_id"""
+    options = [('A', option_a), ('B', option_b), ('C', option_c), ('D', option_d)]
+    rng = _random.Random(round_id * 10000 + q_id)
+    rng.shuffle(options)
+    new_correct = 'A'
+    for i, (orig_letter, text) in enumerate(options):
+        if orig_letter == correct_answer:
+            new_correct = chr(65 + i)  # A=65, B=66, C=67, D=68
+    return options[0][1], options[1][1], options[2][1], options[3][1], new_correct
+
 def get_current_round():
     """Get the currently active round without creating a new one."""
     conn = get_db(); c = conn.cursor(); now = datetime.utcnow().isoformat()
@@ -158,6 +171,7 @@ def maybe_create_scheduled_round():
     """Create a new round only if current IST time matches a scheduled slot."""
     now_ist = datetime.now(IST)
     now_utc = datetime.utcnow()
+    logger.info(f"Round checker: IST={now_ist.strftime('%H:%M')}, checking slots...")
 
     # Check if there's already an active round
     conn = get_db(); c = conn.cursor()
@@ -469,17 +483,12 @@ async def api_current_round():
     questions_raw = c.fetchall()
     # Maintain order of questions as they were stored
     questions_dict = {q["id"]: q for q in questions_raw}
-    questions = [
-        {
-            "text": questions_dict[q_id]["question"],
-            "option_a": questions_dict[q_id]["option_a"],
-            "option_b": questions_dict[q_id]["option_b"],
-            "option_c": questions_dict[q_id]["option_c"],
-            "option_d": questions_dict[q_id]["option_d"],
-            "chapter": questions_dict[q_id]["chapter"]
-        }
-        for q_id in q_ids if q_id in questions_dict
-    ]
+    questions = []
+    for q_id in q_ids:
+        if q_id in questions_dict:
+            q = questions_dict[q_id]
+            sa, sb, sc, sd, _ = shuffle_options(q_id, rnd["id"], q["option_a"], q["option_b"], q["option_c"], q["option_d"], q["correct_answer"])
+            questions.append({"text": q["question"], "option_a": sa, "option_b": sb, "option_c": sc, "option_d": sd, "chapter": q["chapter"]})
     c.execute("SELECT COUNT(*) as cnt FROM attempts WHERE round_id = ?", (rnd["id"],)); ac = c.fetchone()["cnt"]
     c.execute("SELECT user_name, time_ms FROM attempts WHERE round_id = ? AND is_correct = 1 ORDER BY time_ms ASC LIMIT 1", (rnd["id"],))
     f = c.fetchone(); conn.close()
@@ -527,7 +536,8 @@ async def api_submit(request: Request):
 
     for i, q_id in enumerate(q_ids):
         if q_id in questions_dict:
-            correct_ans = questions_dict[q_id]["correct_answer"]
+            q = questions_dict[q_id]
+            _, _, _, _, correct_ans = shuffle_options(q_id, rid, q["option_a"], q["option_b"], q["option_c"], q["option_d"], q["correct_answer"])
             user_ans = answers[i] if i < len(answers) else ""
             is_correct = user_ans == correct_ans
 
@@ -555,7 +565,7 @@ async def api_submit(request: Request):
 
     if ic and in_prize_window:
         # Add to winners table with ₹5 prize
-        c.execute("INSERT INTO winners (round_id,user_id,user_name,time_ms,prize_amount) VALUES (?,?,?,?,?)", (rid, uid, un, tms, 5))
+        c.execute("INSERT OR IGNORE INTO winners (round_id,user_id,user_name,time_ms,prize_amount) VALUES (?,?,?,?,?)", (rid, uid, un, tms, 5))
 
         # Keep only top 10 winners for this round
         c.execute("DELETE FROM winners WHERE round_id = ? AND id NOT IN (SELECT id FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10)", (rid, rid))
@@ -617,8 +627,18 @@ async def api_winner_photo(round_id:int=Form(...),user_id:str=Form(...),upi_id:s
 @app.get("/api/leaderboard")
 async def api_leaderboard():
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT user_name, COUNT(*) as wins, MIN(time_ms) as best_time, SUM(prize_amount) as total_won FROM winners GROUP BY user_id ORDER BY wins DESC, best_time ASC LIMIT 20")
-    lb = [dict(r) for r in c.fetchall()]; conn.close(); return {"leaderboard":lb}
+    # Get latest round ID
+    c.execute("SELECT id FROM rounds ORDER BY id DESC LIMIT 1")
+    latest = c.fetchone()
+    if not latest:
+        conn.close()
+    return {"leaderboard": []}
+    rid = latest["id"]
+    # Get winners for this round only
+    c.execute("SELECT user_name, time_ms, prize_amount as total_won, 1 as wins FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10", (rid,))
+    lb = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return {"leaderboard": lb}
 
 @app.get("/api/leaderboard/alltime")
 async def api_leaderboard_alltime(user_id: str = None):
@@ -714,7 +734,7 @@ async def api_wallet(user_id: str):
     if not wallet:
         # Create wallet if doesn't exist
         conn.close()
-        return {"balance": 0, "total_earned": 0, "upi_id": None, "transactions": []}
+    return {"balance": 0, "total_earned": 0, "upi_id": None, "transactions": []}
 
     # Get transactions (wins only)
     c.execute("SELECT amount, type, round_id, created_at FROM transactions WHERE user_id = ? AND type = 'win' ORDER BY created_at DESC LIMIT 50", (user_id,))
@@ -834,6 +854,8 @@ async def api_stats(user_id: str):
 
     conn.close()
 
+    if total_earned == 0:
+        rank = None
     return {
         "rank": rank,
         "total_players": total_players,
@@ -893,19 +915,12 @@ async def api_rounds_practice(round_id: int):
     questions_raw = c.fetchall()
     questions_dict = {q["id"]: q for q in questions_raw}
 
-    questions = [
-        {
-            "text": questions_dict[q_id]["question"],
-            "option_a": questions_dict[q_id]["option_a"],
-            "option_b": questions_dict[q_id]["option_b"],
-            "option_c": questions_dict[q_id]["option_c"],
-            "option_d": questions_dict[q_id]["option_d"],
-            "correct_answer": questions_dict[q_id]["correct_answer"],
-            "explanation": questions_dict[q_id]["explanation"] or "",
-            "chapter": questions_dict[q_id]["chapter"]
-        }
-        for q_id in q_ids if q_id in questions_dict
-    ]
+    questions = []
+    for q_id in q_ids:
+        if q_id in questions_dict:
+            q = questions_dict[q_id]
+            sa, sb, sc, sd, new_correct = shuffle_options(q_id, rnd["id"], q["option_a"], q["option_b"], q["option_c"], q["option_d"], q["correct_answer"])
+            questions.append({"text": q["question"], "option_a": sa, "option_b": sb, "option_c": sc, "option_d": sd, "correct_answer": new_correct, "explanation": q["explanation"] or "", "chapter": q["chapter"]})
 
     # Get round winner info
     c.execute("SELECT COUNT(DISTINCT user_id) as cnt FROM attempts WHERE round_id = ?", (round_id,))
@@ -957,7 +972,8 @@ async def api_rounds_practice_submit(request: Request):
 
     for i, q_id in enumerate(q_ids):
         if q_id in questions_dict:
-            correct_ans = questions_dict[q_id]["correct_answer"]
+            q = questions_dict[q_id]
+            _, _, _, _, correct_ans = shuffle_options(q_id, round_id, q["option_a"], q["option_b"], q["option_c"], q["option_d"], q["correct_answer"])
             user_ans = answers[i] if i < len(answers) else ""
             is_correct = user_ans == correct_ans
 
