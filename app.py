@@ -602,16 +602,35 @@ async def api_submit(request: Request):
 
     conn.close()
 
+    score = sum(1 for r in results if r)
+
+    # Anti-cheat: hide correct answers and per-question results during prize window
+    # so users can't use one account to see answers and another to submit them
+    if in_prize_window:
+        return {
+            "all_correct": all_correct,
+            "score": score,
+            "results": None,
+            "correct_answers": None,
+            "explanations": None,
+            "your_time_ms": tms,
+            "is_current_winner": iw,
+            "rank": rank,
+            "leaderboard": lb,
+            "prize_window_active": True
+        }
+
     return {
         "all_correct": all_correct,
-        "results": results,  # Array of True/False for each question
+        "score": score,
+        "results": results,
         "correct_answers": correct_answers,
         "explanations": explanations,
         "your_time_ms": tms,
         "is_current_winner": iw,
         "rank": rank,
         "leaderboard": lb,
-        "prize_window_active": in_prize_window
+        "prize_window_active": False
     }
 
 @app.post("/api/winner-photo")
