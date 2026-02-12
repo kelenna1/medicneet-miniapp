@@ -2470,6 +2470,13 @@
                     })
                 });
 
+                if (!res.ok) {
+                    const errText = await res.text();
+                    console.error('Practice submit failed:', res.status, errText);
+                    alert(`Server error (${res.status}). Please try again.`);
+                    return;
+                }
+
                 const data = await res.json();
 
                 // Show results
@@ -2530,8 +2537,8 @@
                 showScreen('practiceResultScreen');
 
             } catch (e) {
-                console.error('Failed to submit practice answers:', e);
-                alert('Failed to submit answers. Please try again.');
+                console.error('Practice submit error:', e);
+                alert('Network error — check your connection and try again.');
             }
         }
 
@@ -2548,7 +2555,7 @@
             fd.append('upi_id', document.getElementById('upiInput').value.trim()); fd.append('photo', selectedPhoto);
             try {
                 const res = await fetch(`${API}/api/winner-photo`, { method: 'POST', body: fd }); const data = await res.json();
-                if (data.success) { document.getElementById('winnerForm').innerHTML = `<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:12px">✅</div><h3 style="margin-bottom:8px;font-size:20px">Details Submitted!</h3><p style="color:var(--txt2);font-size:14px;font-weight:600">₹50 will be sent to your UPI within 24 hours.</p><p style="color:var(--green-dk);font-size:13px;font-weight:700;margin-top:8px">You'll be announced on the channel now! 🎉</p></div>` }
+                if (data.success) { document.getElementById('winnerForm').innerHTML = `<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:12px">✅</div><h3 style="margin-bottom:8px;font-size:20px">Details Submitted!</h3><p style="color:var(--txt2);font-size:14px;font-weight:600">₹5 will be sent to your UPI within 24 hours.</p><p style="color:var(--green-dk);font-size:13px;font-weight:700;margin-top:8px">You'll be announced on the channel now! 🎉</p></div>` }
                 else { btn.textContent = 'Submit Details 🎉'; btn.disabled = false }
             }
             catch (e) { btn.textContent = 'Submit Details 🎉'; btn.disabled = false }
