@@ -284,7 +284,7 @@ async def send_new_round_to_channel():
 
 👇 Answer now!"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
-    button = {"inline_keyboard": [[{"text": "🧠 Play Quiz - Win ₹5!", "url": "https://t.me/Winners_neetbot?start=quiz"}]]}
+    button = {"inline_keyboard": [[{"text": "🧠 Play Quiz - Win ₹5!", "url": "https://t.me/Winners_neetbot/Medicneet"}]]}
     async with httpx.AsyncClient() as client:
         await client.post(f"{url}/sendMessage", json={"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML", "reply_markup": button})
 
