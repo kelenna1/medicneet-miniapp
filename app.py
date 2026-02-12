@@ -436,7 +436,9 @@ async def api_schedule():
             if next_round_utc is None:
                 next_round_utc = scheduled_utc.isoformat()
 
-        time_12h = f"{hour - 12 if hour > 12 else hour}:{minute:02d} PM"
+        period = "AM" if hour < 12 else "PM"
+        display_hour = hour % 12 or 12
+        time_12h = f"{display_hour}:{minute:02d} {period}"
         schedule.append({
             "time": time_12h,
             "hour": hour,
