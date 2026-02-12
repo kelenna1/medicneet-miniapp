@@ -2067,21 +2067,24 @@
 
                 const data = await res.json();
 
-                // Show correct/wrong for each question
-                data.results.forEach((isCorrect, idx) => {
-                    const questionBlock = document.getElementById(`question-${idx}`);
-                    questionBlock.classList.add(isCorrect ? 'correct' : 'incorrect');
+                // During prize window, don't reveal which answers were correct/wrong
+                // to prevent multi-account cheating
+                if (!data.prize_window_active && data.results) {
+                    data.results.forEach((isCorrect, idx) => {
+                        const questionBlock = document.getElementById(`question-${idx}`);
+                        questionBlock.classList.add(isCorrect ? 'correct' : 'incorrect');
 
-                    const buttons = questionBlock.querySelectorAll('.option-btn');
-                    buttons.forEach(btn => {
-                        const btnAnswer = btn.dataset.answer;
-                        if (btnAnswer === data.correct_answers[idx]) {
-                            btn.classList.add('correct');
-                        } else if (btnAnswer === userAnswers[idx] && !isCorrect) {
-                            btn.classList.add('wrong');
-                        }
+                        const buttons = questionBlock.querySelectorAll('.option-btn');
+                        buttons.forEach(btn => {
+                            const btnAnswer = btn.dataset.answer;
+                            if (btnAnswer === data.correct_answers[idx]) {
+                                btn.classList.add('correct');
+                            } else if (btnAnswer === userAnswers[idx] && !isCorrect) {
+                                btn.classList.add('wrong');
+                            }
+                        });
                     });
-                });
+                }
 
                 setTimeout(() => showResult(data, tms), 1200);
             } catch (e) {
@@ -2095,8 +2098,8 @@
         function showResult(data, tms) {
             const ts = (tms / 1000).toFixed(2);
             const card = document.getElementById('resultCard');
-            const inPrizeWindow = data.prize_window_active !== false;
-            const correctCount = data.results.filter(r => r).length;
+            const inPrizeWindow = data.prize_window_active === true;
+            const correctCount = inPrizeWindow ? (data.score || 0) : (data.results ? data.results.filter(r => r).length : 0);
             const allCorrect = data.all_correct;
 
             // Store for sharing
@@ -2142,53 +2145,66 @@
 
             document.getElementById('resultTime').textContent = ts;
 
-            // Show explanations for incorrect answers
+            // During prize window, hide explanations and per-question breakdown
+            // to prevent multi-account cheating
             const expCard = document.getElementById('explanationCard');
-            let hasExplanations = false;
-            let expHTML = '<div class="explanation-header">📖 Explanations</div>';
-
-            data.explanations.forEach((exp, idx) => {
-                if (!data.results[idx] && exp?.trim()) {
-                    hasExplanations = true;
-                    expHTML += `<div style="margin-bottom:12px"><strong>Q${idx + 1}:</strong> Correct answer was ${data.correct_answers[idx]}. ${exp}</div>`;
-                }
-            });
-
-            if (hasExplanations) {
-                expCard.innerHTML = expHTML;
-                expCard.style.display = 'block';
-            } else {
-                expCard.style.display = 'none';
-            }
-
-            // Build questions review section
             const reviewContainer = document.getElementById('questionsReviewContainer');
-            if (currentRound?.questions && data.results) {
-                let reviewHTML = '<div style="margin-bottom:16px">';
-                currentRound.questions.forEach((q, idx) => {
-                    const isCorrect = data.results[idx];
-                    const userAnswer = userAnswers[idx];
-                    const correctAnswer = data.correct_answers[idx];
-                    const icon = isCorrect ? '✅' : '❌';
 
-                    reviewHTML += `
-                        <div style="background:var(--bg2);border:2px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:0 3px 0 var(--border)">
-                            <div style="font-size:14px;font-weight:800;color:var(--txt);margin-bottom:6px">
-                                ${icon} Question ${idx + 1}/4
-                            </div>
-                            <div style="font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:4px">
-                                Your answer: <strong>${userAnswer || 'None'}</strong>
-                            </div>
-                            ${!isCorrect ? `<div style="font-size:13px;font-weight:700;color:var(--green-dk)">
-                                Correct answer: <strong>${correctAnswer}</strong>
-                            </div>` : ''}
-                        </div>
-                    `;
-                });
-                reviewHTML += '</div>';
-                reviewContainer.innerHTML = reviewHTML;
+            if (inPrizeWindow) {
+                // Prize window active: only show score summary, no details
+                expCard.style.display = 'none';
+                reviewContainer.innerHTML = `<div style="background:var(--bg2);border:2px solid var(--border);border-radius:16px;padding:18px;margin-bottom:10px;box-shadow:0 3px 0 var(--border);text-align:center">
+                    <div style="font-size:15px;font-weight:800;color:var(--txt);margin-bottom:6px">You got ${correctCount}/4 correct</div>
+                    <div style="font-size:13px;font-weight:600;color:var(--txt2)">Detailed results and explanations will be available after the prize window ends.</div>
+                </div>`;
             } else {
-                reviewContainer.innerHTML = '';
+                // Prize window ended: show full breakdown
+                let hasExplanations = false;
+                let expHTML = '<div class="explanation-header">📖 Explanations</div>';
+
+                if (data.explanations) {
+                    data.explanations.forEach((exp, idx) => {
+                        if (!data.results[idx] && exp?.trim()) {
+                            hasExplanations = true;
+                            expHTML += `<div style="margin-bottom:12px"><strong>Q${idx + 1}:</strong> Correct answer was ${data.correct_answers[idx]}. ${exp}</div>`;
+                        }
+                    });
+                }
+
+                if (hasExplanations) {
+                    expCard.innerHTML = expHTML;
+                    expCard.style.display = 'block';
+                } else {
+                    expCard.style.display = 'none';
+                }
+
+                if (currentRound?.questions && data.results) {
+                    let reviewHTML = '<div style="margin-bottom:16px">';
+                    currentRound.questions.forEach((q, idx) => {
+                        const isCorrect = data.results[idx];
+                        const userAnswer = userAnswers[idx];
+                        const correctAnswer = data.correct_answers[idx];
+                        const icon = isCorrect ? '✅' : '❌';
+
+                        reviewHTML += `
+                            <div style="background:var(--bg2);border:2px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:0 3px 0 var(--border)">
+                                <div style="font-size:14px;font-weight:800;color:var(--txt);margin-bottom:6px">
+                                    ${icon} Question ${idx + 1}/4
+                                </div>
+                                <div style="font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:4px">
+                                    Your answer: <strong>${userAnswer || 'None'}</strong>
+                                </div>
+                                ${!isCorrect ? `<div style="font-size:13px;font-weight:700;color:var(--green-dk)">
+                                    Correct answer: <strong>${correctAnswer}</strong>
+                                </div>` : ''}
+                            </div>
+                        `;
+                    });
+                    reviewHTML += '</div>';
+                    reviewContainer.innerHTML = reviewHTML;
+                } else {
+                    reviewContainer.innerHTML = '';
+                }
             }
 
             // Check for top 10 placement
