@@ -69,7 +69,7 @@ def init_db():
         """CREATE TABLE IF NOT EXISTS winners (
             id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL,
             user_id TEXT NOT NULL, user_name TEXT, photo_path TEXT, upi_id TEXT,
-            time_ms INTEGER, prize_amount INTEGER DEFAULT 50, paid INTEGER DEFAULT 0,
+            time_ms INTEGER, prize_amount INTEGER DEFAULT 5, paid INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP)""",
         """CREATE TABLE IF NOT EXISTS notify_emails (
             id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE,
@@ -206,6 +206,9 @@ def maybe_create_scheduled_round():
             if len(q_ids) < 4:
                 c.execute('SELECT id FROM questions ORDER BY RANDOM() LIMIT 4')
                 q_ids = [q['id'] for q in c.fetchall()]
+            started = now_utc
+            prize_ends = started + timedelta(minutes=PRIZE_WINDOW_MINUTES)
+            ends = started + timedelta(minutes=ROUND_DURATION_MINUTES)
             c.execute("INSERT INTO rounds (question_1_id, question_2_id, question_3_id, question_4_id, started_at, ends_at, prize_ends_at) VALUES (?,?,?,?,?,?,?)",
                       (q_ids[0], q_ids[1], q_ids[2], q_ids[3], started.isoformat(), ends.isoformat(), prize_ends.isoformat()))
             rid = c.lastrowid; conn.commit()
@@ -586,6 +589,15 @@ async def api_submit(request: Request):
     conn.commit()
     c.execute("SELECT user_name, time_ms FROM attempts WHERE round_id = ? AND is_correct = 1 ORDER BY time_ms ASC LIMIT 10", (rid,))
     lb = [dict(r) for r in c.fetchall()]
+
+    # Get user's rank among winners for this round
+    rank = None
+    c.execute("SELECT user_id FROM winners WHERE round_id = ? ORDER BY time_ms ASC", (rid,))
+    for idx, row in enumerate(c.fetchall(), start=1):
+        if row["user_id"] == uid:
+            rank = idx
+            break
+
     conn.close()
 
     return {
@@ -595,6 +607,7 @@ async def api_submit(request: Request):
         "explanations": explanations,
         "your_time_ms": tms,
         "is_current_winner": iw,
+        "rank": rank,
         "leaderboard": lb,
         "prize_window_active": in_prize_window
     }
@@ -625,7 +638,7 @@ async def api_leaderboard():
     latest = c.fetchone()
     if not latest:
         conn.close()
-    return {"leaderboard": []}
+        return {"leaderboard": []}
     rid = latest["id"]
     # Get winners for this round only
     c.execute("SELECT user_name, time_ms, prize_amount as total_won, 1 as wins FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10", (rid,))

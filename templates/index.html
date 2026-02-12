@@ -1758,7 +1758,7 @@
                             <div style="font-size:20px;font-weight:900;margin-top:12px;color:var(--green-dk)">ALL ROUNDS COMPLETED</div>
                             <div style="color:var(--txt2);font-size:14px;font-weight:700;margin-top:8px">Come back tomorrow at 7:00 PM!</div>
                             <div style="margin-top:16px">
-                                <button class="duo-btn blue" onclick="switchTab('history')">Meanwhile, practice with past rounds</button>
+                                <button class="duo-btn blue" onclick="switchTab('practice')">Meanwhile, practice with past rounds</button>
                             </div>
                         </div>
                         ${buildScheduleList(data.schedule)}
@@ -2109,7 +2109,7 @@
                 document.getElementById('resultTitle').textContent = "YOU'RE WINNING!";
                 document.getElementById('resultTitle').className = 'result-title win-text';
                 document.getElementById('resultSub').textContent = 'Solved 4/4 correctly — fastest time! Top 10 win ₹5!';
-                document.getElementById('winnerForm').style.display = 'none';
+                document.getElementById('winnerForm').style.display = 'block';
                 document.getElementById('resultTime').style.color = 'var(--green)';
             }
             else if (allCorrect && inPrizeWindow) {
