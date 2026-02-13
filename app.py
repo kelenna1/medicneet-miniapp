@@ -249,13 +249,20 @@ async def send_winner_to_channel(round_id):
     c = conn.cursor()
     now = datetime.utcnow().isoformat()
 
-    # Step 1: Get speed winners (top 5 fastest, already credited during submit)
-    c.execute("SELECT user_id, user_name, time_ms, prize_amount FROM winners WHERE round_id = ? AND winner_type = 'speed' ORDER BY time_ms ASC LIMIT 5", (round_id,))
-    speed_winners = [dict(r) for r in c.fetchall()]
+    # Step 1: Determine final top 5 speed winners from all 4/4 correct users
+    c.execute("SELECT user_id, user_name, time_ms, prize_amount FROM winners WHERE round_id = ? ORDER BY time_ms ASC", (round_id,))
+    all_entries = [dict(r) for r in c.fetchall()]
 
-    # Step 2: Get remaining correct users (not speed winners) for lucky draw
-    c.execute("SELECT user_id, user_name, time_ms, prize_amount FROM winners WHERE round_id = ? AND (winner_type IS NULL OR winner_type = '') ORDER BY time_ms ASC", (round_id,))
-    pool = [dict(r) for r in c.fetchall()]
+    speed_winners = all_entries[:5]
+    pool = all_entries[5:]
+
+    # Step 2: Mark and credit speed winners
+    for sw in speed_winners:
+        c.execute("UPDATE winners SET winner_type = 'speed' WHERE round_id = ? AND user_id = ?", (round_id, sw["user_id"]))
+        c.execute("INSERT INTO wallets (user_id, user_name, balance, total_earned, created_at, updated_at) VALUES (?,?,5,5,?,?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + 5, total_earned = total_earned + 5, updated_at = ?",
+                 (sw["user_id"], sw["user_name"], now, now, now))
+        c.execute("INSERT INTO transactions (user_id, amount, type, round_id, status, created_at) VALUES (?,?,?,?,?,?)",
+                 (sw["user_id"], 5, "win", round_id, "completed", now))
 
     # Step 3: Run lucky draw — pick min(5, len(pool)) from remaining
     lucky_count = min(5, len(pool))
@@ -606,25 +613,17 @@ async def api_submit(request: Request):
 
     if ic and in_prize_window:
         # Add to winners table (all 4/4 correct users during prize window)
+        # Wallet crediting happens in send_winner_to_channel when prize window ends
+        # so final top 5 are determined once, not on every submit
         c.execute("INSERT OR IGNORE INTO winners (round_id,user_id,user_name,time_ms,prize_amount) VALUES (?,?,?,?,?)", (rid, uid, un, tms, 5))
 
-        # Check if user is in top 5 fastest (speed winners get instant credit)
+        # Check if user is currently in top 5 fastest (for UI feedback only, no crediting)
         c.execute("SELECT user_id FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 5", (rid,))
         speed_winners = [r["user_id"] for r in c.fetchall()]
 
         if uid in speed_winners:
             iw = True
-            c.execute("UPDATE winners SET winner_type = 'speed' WHERE round_id = ? AND user_id = ?", (rid, uid))
-
-            # Add ₹5 to wallet balance
-            c.execute("INSERT INTO wallets (user_id, user_name, balance, total_earned, created_at, updated_at) VALUES (?,?,5,5,?,?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + 5, total_earned = total_earned + 5, updated_at = ?",
-                     (uid, un, now, now, now))
-
-            # Create transaction record
-            c.execute("INSERT INTO transactions (user_id, amount, type, round_id, status, created_at) VALUES (?,?,?,?,?,?)",
-                     (uid, 5, "win", rid, "completed", now))
         else:
-            # User is in the lucky draw pool (credited after prize window ends)
             in_lucky_pool = True
 
         # Update rounds table with fastest (1st place) winner
@@ -1166,6 +1165,8 @@ async def api_challenge_history(user_id: str):
 
     conn.close()
     return {"history": history}
+
+@app.get("/api/wallet")
 async def api_wallet(user_id: str):
     """Get wallet balance and transactions for a user"""
     if not user_id:
