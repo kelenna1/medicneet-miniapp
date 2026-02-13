@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qsl
 import httpx
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -158,13 +158,6 @@ def validate_telegram_data(init_data):
             return json.loads(parsed.get("user","{}"))
     except: pass
     return None
-
-def is_valid_photo(fp):
-    try:
-        with open(fp,'rb') as f: h = f.read(4)
-        ok = h.startswith(b'\xff\xd8\xff') or h.startswith(b'\x89PNG')
-        return ok and 10*1024 < os.path.getsize(fp) < 5*1024*1024
-    except: return False
 
 def get_current_round():
     """Get the currently active round without creating a new one."""
@@ -339,31 +332,6 @@ def send_daily_email_export():
             c.execute("INSERT INTO email_export_log (exported_at, email_count, status) VALUES (?,?,?)", (datetime.utcnow().isoformat(), 0, f"failed: {str(e)[:200]}"))
             conn.commit(); conn.close()
         except: pass
-
-def send_winner_notification_email(round_id, winner_name, upi_id, time_ms, user_id):
-    """Instant email to Shahul when a winner claims their prize"""
-    try:
-        time_sec = time_ms / 1000 if time_ms else 0
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-        msg = MIMEText(
-            f"🏆 NEW WINNER — Pay ₹{CASH_PRIZE} Now!\n\n"
-            f"Round: #{round_id}\n"
-            f"Winner: {winner_name}\n"
-            f"Telegram ID: {user_id}\n"
-            f"UPI ID: {upi_id}\n"
-            f"Solve Time: {time_sec:.1f} seconds\n"
-            f"Prize: ₹{CASH_PRIZE}\n"
-            f"Time: {now}\n\n"
-            f"— MedicNEET Bot", "plain"
-        )
-        msg["From"] = SMTP_USER
-        msg["To"] = EXPORT_TO_EMAIL
-        msg["Subject"] = f"💰 Pay ₹{CASH_PRIZE} → {winner_name} — UPI: {upi_id}"
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-            s.starttls(); s.login(SMTP_USER, SMTP_PASS); s.send_message(msg)
-        logger.info(f"✅ Winner email sent: {winner_name} / {upi_id}")
-    except Exception as e:
-        logger.error(f"❌ Winner email failed: {e}")
 
 def send_withdrawal_request_email(user_id, user_name, amount, upi_id, balance, total_earned):
     """Send email when user requests withdrawal"""
@@ -684,6 +652,14 @@ async def api_submit(request: Request):
             }
         # If not 4/4, leave as pending (they can try next round)
 
+    # Read wallet balance if user won
+    wallet_balance = None
+    if iw:
+        c.execute("SELECT balance FROM wallets WHERE user_id = ?", (uid,))
+        w = c.fetchone()
+        if w:
+            wallet_balance = w["balance"]
+
     conn.commit()
     conn.close()
 
@@ -703,7 +679,8 @@ async def api_submit(request: Request):
             "rank": rank,
             "leaderboard": lb,
             "prize_window_active": True,
-            "challenge_result": challenge_result
+            "challenge_result": challenge_result,
+            "wallet_balance": wallet_balance
         }
 
     return {
@@ -717,26 +694,9 @@ async def api_submit(request: Request):
         "rank": rank,
         "leaderboard": lb,
         "prize_window_active": False,
-        "challenge_result": challenge_result
+        "challenge_result": challenge_result,
+        "wallet_balance": wallet_balance
     }
-
-@app.post("/api/winner-photo")
-async def api_winner_photo(round_id:int=Form(...),user_id:str=Form(...),upi_id:str=Form(...),photo:UploadFile=File(...)):
-    conn = get_db(); c = conn.cursor()
-    c.execute("SELECT * FROM winners WHERE round_id = ? AND user_id = ?", (round_id,user_id))
-    if not c.fetchone(): conn.close(); raise HTTPException(403,"Not the winner")
-    ts = int(time.time()); fp = f"static/uploads/winner_{round_id}_{ts}.jpg"
-    with open(fp,"wb") as f: f.write(await photo.read())
-    if not is_valid_photo(fp): os.remove(fp); conn.close(); raise HTTPException(400,"Invalid photo")
-    c.execute("UPDATE winners SET photo_path=?,upi_id=? WHERE round_id=? AND user_id=?", (fp,upi_id,round_id,user_id))
-    c.execute("UPDATE rounds SET winner_photo_path=?,winner_upi_id=? WHERE id=?", (fp,upi_id,round_id))
-    # Get winner details for email
-    c.execute("SELECT winner_name, winner_time_ms FROM rounds WHERE id=?", (round_id,))
-    rnd_info = c.fetchone()
-    conn.commit(); conn.close()
-    # Send instant email notification
-    send_winner_notification_email(round_id, rnd_info["winner_name"] if rnd_info else "Unknown", upi_id, rnd_info["winner_time_ms"] if rnd_info else 0, user_id)
-    return {"success":True,"message":"Details submitted! Prize will be sent within 24 hours 🏆"}
 
 @app.get("/api/leaderboard")
 async def api_leaderboard():
