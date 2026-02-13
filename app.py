@@ -70,6 +70,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL,
             user_id TEXT NOT NULL, user_name TEXT, photo_path TEXT, upi_id TEXT,
             time_ms INTEGER, prize_amount INTEGER DEFAULT 5, paid INTEGER DEFAULT 0,
+            winner_type TEXT DEFAULT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP)""",
         """CREATE TABLE IF NOT EXISTS notify_emails (
             id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE,
@@ -122,6 +123,11 @@ def init_db():
     # Migrate: add chain_parent_id to challenges if missing (for existing DBs)
     try:
         c.execute("ALTER TABLE challenges ADD COLUMN chain_parent_id INTEGER")
+    except:
+        pass
+    # Migrate: add winner_type to winners if missing (for existing DBs)
+    try:
+        c.execute("ALTER TABLE winners ADD COLUMN winner_type TEXT DEFAULT NULL")
     except:
         pass
     conn.commit(); conn.close()
@@ -239,11 +245,34 @@ def maybe_create_scheduled_round():
     return None
 
 async def send_winner_to_channel(round_id):
-    # Fetch all top 10 winners from database
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT user_name, time_ms, prize_amount FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10", (round_id,))
-    winners = c.fetchall()
+    now = datetime.utcnow().isoformat()
+
+    # Step 1: Get speed winners (top 5 fastest, already credited during submit)
+    c.execute("SELECT user_id, user_name, time_ms, prize_amount FROM winners WHERE round_id = ? AND winner_type = 'speed' ORDER BY time_ms ASC LIMIT 5", (round_id,))
+    speed_winners = [dict(r) for r in c.fetchall()]
+
+    # Step 2: Get remaining correct users (not speed winners) for lucky draw
+    c.execute("SELECT user_id, user_name, time_ms, prize_amount FROM winners WHERE round_id = ? AND (winner_type IS NULL OR winner_type = '') ORDER BY time_ms ASC", (round_id,))
+    pool = [dict(r) for r in c.fetchall()]
+
+    # Step 3: Run lucky draw — pick min(5, len(pool)) from remaining
+    lucky_count = min(5, len(pool))
+    lucky_winners = random.sample(pool, lucky_count) if lucky_count > 0 else []
+
+    # Step 4: Credit ₹5 to each lucky winner's wallet
+    for lw in lucky_winners:
+        c.execute("UPDATE winners SET winner_type = 'lucky' WHERE round_id = ? AND user_id = ?", (round_id, lw["user_id"]))
+        c.execute("INSERT INTO wallets (user_id, user_name, balance, total_earned, created_at, updated_at) VALUES (?,?,5,5,?,?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + 5, total_earned = total_earned + 5, updated_at = ?",
+                 (lw["user_id"], lw["user_name"], now, now, now))
+        c.execute("INSERT INTO transactions (user_id, amount, type, round_id, status, created_at) VALUES (?,?,?,?,?,?)",
+                 (lw["user_id"], 5, "win", round_id, "completed", now))
+
+    # Step 5: Remove non-winners from winners table (pool members not selected)
+    c.execute("DELETE FROM winners WHERE round_id = ? AND (winner_type IS NULL OR winner_type = '')", (round_id,))
+
+    conn.commit()
 
     # Get total participants count
     c.execute("SELECT COUNT(DISTINCT user_id) as cnt FROM attempts WHERE round_id = ?", (round_id,))
@@ -254,8 +283,8 @@ async def send_winner_to_channel(round_id):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
     button = {"inline_keyboard": [[{"text": "🧠 Play Next Round", "url": "https://t.me/Winners_neetbot/Medicneet"}]]}
 
-    if not winners:
-        # No winners - nobody got 4/4
+    all_winners = speed_winners + lucky_winners
+    if not all_winners:
         text = f"""🏆 <b>ROUND #{round_id} RESULTS</b>
 
 No winners this round! 😢
@@ -264,16 +293,25 @@ Nobody scored 4/4 correct.
 Better luck next time!
 🔥 Rounds daily at 7:00, 7:30, 8:00, 8:30 PM IST!"""
     else:
-        # Build winner list
-        winner_lines = []
-        for i, w in enumerate(winners, start=1):
-            name = w["user_name"] or "Anonymous"
-            time_sec = w["time_ms"] / 1000
-            prize = w["prize_amount"]
-            winner_lines.append(f"{i}. {name} — 4/4 in {time_sec:.1f}s — ₹{prize} ✅")
+        sections = []
 
-        winner_text = "\n".join(winner_lines)
-        total_prize = sum(w["prize_amount"] for w in winners)
+        if speed_winners:
+            speed_lines = []
+            for i, w in enumerate(speed_winners, start=1):
+                name = w["user_name"] or "Anonymous"
+                time_sec = w["time_ms"] / 1000
+                speed_lines.append(f"{i}. {name} — {time_sec:.1f}s — ₹{CASH_PRIZE} ✅")
+            sections.append("⚡ <b>Speed Winners (Top 5):</b>\n" + "\n".join(speed_lines))
+
+        if lucky_winners:
+            lucky_lines = []
+            for w in lucky_winners:
+                name = w["user_name"] or "Anonymous"
+                lucky_lines.append(f"🍀 {name} — ₹{CASH_PRIZE} ✅")
+            sections.append("🎲 <b>Lucky Winners:</b>\n" + "\n".join(lucky_lines))
+
+        winner_text = "\n\n".join(sections)
+        total_prize = len(all_winners) * CASH_PRIZE
 
         text = f"""🏆 <b>ROUND #{round_id} RESULTS</b>
 
@@ -291,9 +329,9 @@ async def send_new_round_to_channel():
     """Post new question alert with quiz button to channel"""
     text = f"""🚨 <b>NEET 2026 - 4 High Level Biology Questions Posted!</b>
 
-💰 Top 10 winners get ₹{CASH_PRIZE} each (₹50 total prize pool)
+⚡ Top 5 fastest win ₹{CASH_PRIZE} + 🎲 5 lucky winners drawn randomly!
+💰 ₹50 total prize pool
 ⏱ Prize window: {PRIZE_WINDOW_MINUTES} minutes only!
-🏆 Winners announced with payment proof
 
 👇 Answer now!"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -561,21 +599,22 @@ async def api_submit(request: Request):
               (rid, uid, un, json.dumps(answers), ic, tms))
 
     iw = False
+    in_lucky_pool = False
     # Check if still in prize window
     prize_ends_at = rnd["prize_ends_at"]
     in_prize_window = prize_ends_at and now <= prize_ends_at
 
     if ic and in_prize_window:
-        # Add to winners table with ₹5 prize
+        # Add to winners table (all 4/4 correct users during prize window)
         c.execute("INSERT OR IGNORE INTO winners (round_id,user_id,user_name,time_ms,prize_amount) VALUES (?,?,?,?,?)", (rid, uid, un, tms, 5))
 
-        # Keep only top 10 winners for this round
-        c.execute("DELETE FROM winners WHERE round_id = ? AND id NOT IN (SELECT id FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10)", (rid, rid))
+        # Check if user is in top 5 fastest (speed winners get instant credit)
+        c.execute("SELECT user_id FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 5", (rid,))
+        speed_winners = [r["user_id"] for r in c.fetchall()]
 
-        # Check if user is in top 10
-        c.execute("SELECT COUNT(*) as cnt FROM winners WHERE round_id = ? AND user_id = ?", (rid, uid))
-        if c.fetchone()["cnt"] > 0:
+        if uid in speed_winners:
             iw = True
+            c.execute("UPDATE winners SET winner_type = 'speed' WHERE round_id = ? AND user_id = ?", (rid, uid))
 
             # Add ₹5 to wallet balance
             c.execute("INSERT INTO wallets (user_id, user_name, balance, total_earned, created_at, updated_at) VALUES (?,?,5,5,?,?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + 5, total_earned = total_earned + 5, updated_at = ?",
@@ -584,6 +623,9 @@ async def api_submit(request: Request):
             # Create transaction record
             c.execute("INSERT INTO transactions (user_id, amount, type, round_id, status, created_at) VALUES (?,?,?,?,?,?)",
                      (uid, 5, "win", rid, "completed", now))
+        else:
+            # User is in the lucky draw pool (credited after prize window ends)
+            in_lucky_pool = True
 
         # Update rounds table with fastest (1st place) winner
         c.execute("SELECT user_id, user_name, time_ms FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 1", (rid,))
@@ -596,7 +638,7 @@ async def api_submit(request: Request):
     c.execute("SELECT user_name, time_ms FROM attempts WHERE round_id = ? AND is_correct = 1 ORDER BY time_ms ASC LIMIT 10", (rid,))
     lb = [dict(r) for r in c.fetchall()]
 
-    # Get user's rank among winners for this round
+    # Get user's rank among all correct users for this round
     rank = None
     c.execute("SELECT user_id FROM winners WHERE round_id = ? ORDER BY time_ms ASC", (rid,))
     for idx, row in enumerate(c.fetchall(), start=1):
@@ -676,6 +718,7 @@ async def api_submit(request: Request):
             "explanations": None,
             "your_time_ms": tms,
             "is_current_winner": iw,
+            "in_lucky_pool": in_lucky_pool,
             "rank": rank,
             "leaderboard": lb,
             "prize_window_active": True,
@@ -691,6 +734,7 @@ async def api_submit(request: Request):
         "explanations": explanations,
         "your_time_ms": tms,
         "is_current_winner": iw,
+        "in_lucky_pool": in_lucky_pool,
         "rank": rank,
         "leaderboard": lb,
         "prize_window_active": False,
@@ -708,8 +752,8 @@ async def api_leaderboard():
         conn.close()
         return {"leaderboard": []}
     rid = latest["id"]
-    # Get winners for this round only
-    c.execute("SELECT user_name, time_ms, prize_amount as total_won, 1 as wins FROM winners WHERE round_id = ? ORDER BY time_ms ASC LIMIT 10", (rid,))
+    # Get winners for this round (speed first, then lucky, then pool)
+    c.execute("SELECT user_name, time_ms, prize_amount as total_won, 1 as wins, winner_type FROM winners WHERE round_id = ? ORDER BY CASE WHEN winner_type = 'speed' THEN 0 WHEN winner_type = 'lucky' THEN 1 ELSE 2 END, time_ms ASC", (rid,))
     lb = [dict(r) for r in c.fetchall()]
     conn.close()
     return {"leaderboard": lb}

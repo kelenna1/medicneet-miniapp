@@ -2408,17 +2408,25 @@
             if (data.is_current_winner && inPrizeWindow) {
                 card.className = 'result-card win';
                 document.getElementById('resultIcon').textContent = '🏆';
-                document.getElementById('resultTitle').textContent = "YOU'RE WINNING!";
+                document.getElementById('resultTitle').textContent = "SPEED WINNER!";
                 document.getElementById('resultTitle').className = 'result-title win-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 correctly — fastest time! Top 10 win ₹5!';
+                document.getElementById('resultSub').textContent = 'Top 5 fastest — ₹5 auto-credited to wallet!';
                 document.getElementById('resultTime').style.color = 'var(--green)';
+            }
+            else if (data.in_lucky_pool && inPrizeWindow) {
+                card.className = 'result-card correct';
+                document.getElementById('resultIcon').textContent = '🎲';
+                document.getElementById('resultTitle').textContent = 'In Lucky Draw!';
+                document.getElementById('resultTitle').className = 'result-title correct-text';
+                document.getElementById('resultSub').textContent = 'Solved 4/4 — You\'re in the lucky draw for 5 more ₹5 prizes!';
+                document.getElementById('resultTime').style.color = 'var(--green-dk)';
             }
             else if (allCorrect && inPrizeWindow) {
                 card.className = 'result-card correct';
                 document.getElementById('resultIcon').textContent = '✅';
                 document.getElementById('resultTitle').textContent = 'All Correct!';
                 document.getElementById('resultTitle').className = 'result-title correct-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 — Someone was faster. Try next round!';
+                document.getElementById('resultSub').textContent = 'Solved 4/4 — You\'re in the lucky draw for 5 more ₹5 prizes!';
                 document.getElementById('resultTime').style.color = 'var(--green-dk)';
             }
             else if (allCorrect && !inPrizeWindow) {
@@ -2574,22 +2582,25 @@
                 challengeResultContainer.style.display = 'none';
             }
 
-            // Check for top 10 placement
+            // Check for winner/lucky pool placement
             const top10Notif = document.getElementById('top10Notification');
             const top10Title = document.getElementById('top10Title');
             const top10Sub = document.getElementById('top10Sub');
             if (data.is_current_winner && inPrizeWindow) {
                 const balText = data.wallet_balance != null ? ` Balance: ₹${data.wallet_balance}` : '';
-                top10Title.textContent = '₹5 added to wallet!';
-                top10Sub.textContent = `Auto-credited to your wallet.${balText}`;
+                top10Title.textContent = '⚡ ₹5 added to wallet!';
+                top10Sub.textContent = `Speed winner — auto-credited.${balText}`;
                 top10Notif.style.display = 'block';
-            } else if (data.rank && data.rank <= 10 && inPrizeWindow && allCorrect && !data.is_current_winner) {
-                const balText = data.wallet_balance != null ? ` Balance: ₹${data.wallet_balance}` : '';
-                top10Title.textContent = "You're in Top 10!";
-                top10Sub.textContent = `₹5 added to wallet!${balText}`;
+            } else if (data.in_lucky_pool && inPrizeWindow) {
+                top10Title.textContent = '🎲 You\'re in the Lucky Draw!';
+                top10Sub.textContent = '5 random winners drawn after the round ends. Good luck!';
                 top10Notif.style.display = 'block';
+                top10Notif.style.background = 'var(--orange-lt)';
+                top10Notif.style.borderColor = 'var(--orange)';
             } else {
                 top10Notif.style.display = 'none';
+                top10Notif.style.background = 'var(--green-lt)';
+                top10Notif.style.borderColor = 'var(--green)';
             }
 
             buildCTA('appCTA');
@@ -2657,17 +2668,46 @@
                     return;
                 }
 
+                const speed = data.leaderboard.filter(e => e.winner_type === 'speed');
+                const lucky = data.leaderboard.filter(e => e.winner_type === 'lucky');
+
                 let h = '';
-                data.leaderboard.forEach((e, i) => {
-                    const cls = i === 0 ? 'first' : i === 1 ? 'second' : i === 2 ? 'third' : '';
-                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-                    h += `<div class="lb-row ${cls}">
-                        <div class="lb-rank">${medal || i + 1}</div>
-                        <div class="lb-name">${e.user_name}</div>
-                        <div class="lb-wins">${e.wins} 🏆</div>
-                        <div class="lb-time" style="margin-left:10px">₹${e.total_won}</div>
-                    </div>`;
-                });
+                if (speed.length) {
+                    h += '<div style="font-size:14px;font-weight:800;color:var(--txt2);margin-bottom:8px">⚡ Speed Winners</div>';
+                    speed.forEach((e, i) => {
+                        const cls = i === 0 ? 'first' : i === 1 ? 'second' : i === 2 ? 'third' : '';
+                        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                        h += `<div class="lb-row ${cls}">
+                            <div class="lb-rank">${medal || i + 1}</div>
+                            <div class="lb-name">${e.user_name}</div>
+                            <div class="lb-time">${(e.time_ms / 1000).toFixed(1)}s</div>
+                            <div class="lb-time" style="margin-left:10px">₹${e.total_won}</div>
+                        </div>`;
+                    });
+                }
+                if (lucky.length) {
+                    h += '<div style="font-size:14px;font-weight:800;color:var(--txt2);margin:12px 0 8px">🎲 Lucky Winners</div>';
+                    lucky.forEach(e => {
+                        h += `<div class="lb-row">
+                            <div class="lb-rank">🍀</div>
+                            <div class="lb-name">${e.user_name}</div>
+                            <div class="lb-time" style="margin-left:auto">₹${e.total_won}</div>
+                        </div>`;
+                    });
+                }
+                // Fallback: if no winner_type set yet (during prize window), show flat list
+                if (!speed.length && !lucky.length) {
+                    data.leaderboard.forEach((e, i) => {
+                        const cls = i === 0 ? 'first' : i === 1 ? 'second' : i === 2 ? 'third' : '';
+                        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                        h += `<div class="lb-row ${cls}">
+                            <div class="lb-rank">${medal || i + 1}</div>
+                            <div class="lb-name">${e.user_name}</div>
+                            <div class="lb-time">${e.time_ms ? (e.time_ms / 1000).toFixed(1) + 's' : ''}</div>
+                            <div class="lb-time" style="margin-left:10px">₹${e.total_won}</div>
+                        </div>`;
+                    });
+                }
                 c.innerHTML = h;
             } catch (e) {
                 console.error(e);
