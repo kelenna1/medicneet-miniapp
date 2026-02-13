@@ -1384,6 +1384,85 @@
             font-weight: 800;
             margin-bottom: 10px;
         }
+
+        .challenge-banner {
+            background: linear-gradient(135deg, var(--gold-lt) 0%, #fff8e1 100%);
+            border: 2px solid var(--gold);
+            border-radius: 18px;
+            padding: 16px;
+            margin: 0 16px 12px;
+            box-shadow: 0 3px 0 var(--gold-dk);
+            text-align: center;
+        }
+
+        .challenge-banner .challenge-title {
+            font-size: 16px;
+            font-weight: 900;
+            color: var(--txt);
+            margin-bottom: 6px;
+        }
+
+        .challenge-banner .challenge-info {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--txt2);
+            line-height: 1.5;
+        }
+
+        .challenge-banner .challenge-time {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--gold-dk);
+            margin: 8px 0;
+        }
+
+        .challenge-friend-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #ff6b35, #ff4500);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-size: 17px;
+            font-weight: 800;
+            font-family: inherit;
+            margin-top: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #cc3700;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .05s;
+        }
+
+        .challenge-friend-btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        .challenge-friend-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .challenge-result-card {
+            border: 2px solid var(--border);
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 16px;
+            text-align: center;
+            box-shadow: 0 3px 0 var(--border);
+        }
+
+        .challenge-result-card.challenge-won {
+            background: var(--green-lt);
+            border-color: var(--green);
+            box-shadow: 0 3px 0 var(--green-dk);
+        }
+
+        .challenge-result-card.challenge-lost {
+            background: var(--orange-lt);
+            border-color: var(--orange);
+            box-shadow: 0 3px 0 var(--orange);
+        }
     </style>
 </head>
 
@@ -1415,6 +1494,11 @@
         style="display:none;background:var(--orange-lt);padding:8px 16px;text-align:center;border-bottom:2px solid var(--orange)">
         <span style="font-weight:800;color:var(--orange);font-size:13px">⏰ PRACTICE MODE — Prize window ended. Round ends in <span id="nextQuestionTime">--:--</span></span>
     </div>
+    <div id="challengeBanner" class="challenge-banner" style="display:none;margin-top:12px">
+        <div class="challenge-title" id="challengeBannerTitle"></div>
+        <div class="challenge-time" id="challengeBannerTime"></div>
+        <div class="challenge-info" id="challengeBannerInfo"></div>
+    </div>
     <div class="page-content">
         <div class="screen active" id="loadingScreen">
             <div class="loading">
@@ -1440,6 +1524,10 @@
                 <div class="result-time" id="resultTime"></div>
                 <div class="result-time-label">seconds</div>
             </div>
+            <div id="challengeResultContainer" style="display:none"></div>
+            <button class="challenge-friend-btn" id="challengeFriendBtn" onclick="challengeFriend()" style="display:none">
+                ⚔️ Challenge a Friend
+            </button>
             <button class="share-challenge-btn" id="shareChallengeBtn" onclick="shareChallenge()">
                 🔗 Share & Challenge Friends
             </button>
@@ -1694,6 +1782,85 @@
         let userAnswers = [null, null, null, null];  // Track answers for 4 questions
         let submitCountdownInterval = null, submitTimeRemaining = 60;  // 60 second countdown timer
         const API = '';
+
+        // Challenge system
+        let activeChallengeCode = null;
+        let challengeInfo = null;
+
+        // Parse start_param for challenge code
+        (function() {
+            const startParam = tg?.initDataUnsafe?.start_param || '';
+            if (startParam.startsWith('challenge_')) {
+                activeChallengeCode = startParam.replace('challenge_', '');
+                loadChallengeInfo(activeChallengeCode);
+            }
+        })();
+
+        async function loadChallengeInfo(code) {
+            try {
+                const res = await fetch(`${API}/api/challenge/info?code=${code}`);
+                if (!res.ok) { activeChallengeCode = null; return; }
+                challengeInfo = await res.json();
+                if (challengeInfo.status !== 'pending') {
+                    // Challenge already completed/expired
+                    const banner = document.getElementById('challengeBanner');
+                    banner.style.display = 'block';
+                    document.getElementById('challengeBannerTitle').textContent = 'Challenge ' + (challengeInfo.status === 'expired' ? 'Expired' : 'Completed');
+                    document.getElementById('challengeBannerTime').textContent = '';
+                    document.getElementById('challengeBannerInfo').textContent = 'This challenge is no longer active.';
+                    activeChallengeCode = null;
+                    return;
+                }
+                // Show challenge banner
+                const banner = document.getElementById('challengeBanner');
+                banner.style.display = 'block';
+                const timeStr = (challengeInfo.challenger_time_ms / 1000).toFixed(1);
+                document.getElementById('challengeBannerTitle').innerHTML = '&#x1F3C6; ' + challengeInfo.challenger_name + ' challenged you!';
+                document.getElementById('challengeBannerTime').textContent = timeStr + 's';
+                document.getElementById('challengeBannerInfo').innerHTML = 'Beat their time with 4/4 correct to win them &#x20B9;5!<br>Next live round: ' + (challengeInfo.next_round_time || 'Soon');
+            } catch (e) {
+                console.error('Failed to load challenge info:', e);
+                activeChallengeCode = null;
+            }
+        }
+
+        async function challengeFriend() {
+            const btn = document.getElementById('challengeFriendBtn');
+            btn.disabled = true;
+            btn.textContent = 'Creating challenge...';
+            try {
+                const res = await fetch(`${API}/api/challenge/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        user_name: userName,
+                        round_id: currentRound.round_id,
+                        time_ms: lastTimeMs
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.challenge_code) {
+                    const code = data.challenge_code;
+                    const timeStr = (data.challenger_time_ms / 1000).toFixed(1);
+                    const shareUrl = 'https://t.me/Winners_neetbot/Medicneet?startapp=challenge_' + code;
+                    const shareText = '\uD83C\uDFC6 I scored 4/4 in ' + timeStr + 's on MedicNEET Quiz! Think you can beat me? Accept my challenge!';
+                    const tgShareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(shareText);
+                    window.open(tgShareUrl);
+                    btn.textContent = '\u2705 Challenge Sent!';
+                } else {
+                    const errMsg = data.detail || 'Failed to create challenge';
+                    alert(errMsg);
+                    btn.disabled = false;
+                    btn.textContent = '\u2694\uFE0F Challenge a Friend';
+                }
+            } catch (e) {
+                console.error('Challenge create error:', e);
+                alert('Failed to create challenge. Try again.');
+                btn.disabled = false;
+                btn.textContent = '\u2694\uFE0F Challenge a Friend';
+            }
+        }
 
         // ─── CTA BUILDER (Launching Soon vs Live) ─────────────────────
         function buildCTA(containerId) {
@@ -2035,26 +2202,33 @@
             }
         }
 
+        let lastTimeMs = 0;
+
         async function submitAllAnswers() {
             if (hasAttempted) return;
             hasAttempted = true;
             const tms = stopStopwatch();
+            lastTimeMs = tms;
 
             document.getElementById('submitBtn').disabled = true;
             document.querySelectorAll('.option-btn').forEach(b => b.style.pointerEvents = 'none');
 
             try {
+                const submitBody = {
+                    round_id: currentRound.round_id,
+                    user_id: userId,
+                    user_name: userName,
+                    answers: userAnswers,
+                    time_ms: tms,
+                    init_data: initData
+                };
+                if (activeChallengeCode) {
+                    submitBody.challenge_code = activeChallengeCode;
+                }
                 const res = await fetch(`${API}/api/submit`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        round_id: currentRound.round_id,
-                        user_id: userId,
-                        user_name: userName,
-                        answers: userAnswers,
-                        time_ms: tms,
-                        init_data: initData
-                    })
+                    body: JSON.stringify(submitBody)
                 });
 
                 if (res.status === 400) {
@@ -2205,6 +2379,49 @@
                 } else {
                     reviewContainer.innerHTML = '';
                 }
+            }
+
+            // Show "Challenge a Friend" button if 4/4 correct
+            const challengeBtn = document.getElementById('challengeFriendBtn');
+            const shareBtn = document.getElementById('shareChallengeBtn');
+            if (allCorrect) {
+                challengeBtn.style.display = 'block';
+                shareBtn.style.display = 'none';
+            } else {
+                challengeBtn.style.display = 'none';
+                shareBtn.style.display = 'block';
+            }
+
+            // Show challenge result if present
+            const challengeResultContainer = document.getElementById('challengeResultContainer');
+            if (data.challenge_result) {
+                const cr = data.challenge_result;
+                const challengerTimeStr = (cr.challenger_time_ms / 1000).toFixed(1);
+                let crHTML = '';
+                if (cr.status === 'won') {
+                    crHTML = `<div class="challenge-result-card challenge-won">
+                        <div style="font-size:36px;margin-bottom:8px">&#x1F389;</div>
+                        <div style="font-size:18px;font-weight:900;color:var(--green-dk);margin-bottom:6px">You beat ${cr.challenger_name}!</div>
+                        <div style="font-size:14px;font-weight:700;color:var(--txt2)">They just earned &#x20B9;5 because of you!</div>
+                    </div>`;
+                } else if (cr.status === 'lost') {
+                    crHTML = `<div class="challenge-result-card challenge-lost">
+                        <div style="font-size:36px;margin-bottom:8px">&#x1F614;</div>
+                        <div style="font-size:18px;font-weight:900;color:var(--orange);margin-bottom:6px">So close!</div>
+                        <div style="font-size:14px;font-weight:700;color:var(--txt2)">You got 4/4 but ${cr.challenger_name}'s ${challengerTimeStr}s was faster. Try next round!</div>
+                    </div>`;
+                }
+                challengeResultContainer.innerHTML = crHTML;
+                challengeResultContainer.style.display = 'block';
+            } else if (activeChallengeCode && !allCorrect) {
+                challengeResultContainer.innerHTML = `<div class="challenge-result-card">
+                    <div style="font-size:36px;margin-bottom:8px">&#x1F4AA;</div>
+                    <div style="font-size:16px;font-weight:900;color:var(--txt);margin-bottom:6px">Challenge Active</div>
+                    <div style="font-size:14px;font-weight:700;color:var(--txt2)">You need 4/4 correct to complete the challenge. Try next round!</div>
+                </div>`;
+                challengeResultContainer.style.display = 'block';
+            } else {
+                challengeResultContainer.style.display = 'none';
             }
 
             // Check for top 10 placement
