@@ -1649,6 +1649,90 @@
             <div id="waitCTA"></div>
         </div>
 
+        <div class="screen" id="challengesScreen">
+            <h2 style="font-size:22px;font-weight:900;margin-bottom:16px">⚔️ CHALLENGES</h2>
+
+            <div class="sub-tabs">
+                <button class="sub-tab-btn active" id="chalStatsTabBtn" onclick="switchChallengeTab('stats')">My Stats</button>
+                <button class="sub-tab-btn" id="chalLbTabBtn" onclick="switchChallengeTab('leaderboard')">Leaderboard</button>
+                <button class="sub-tab-btn" id="chalHistTabBtn" onclick="switchChallengeTab('history')">History</button>
+            </div>
+
+            <div class="sub-tab-content active" id="chalStatsTab">
+                <div id="challengeStatsCard" style="background:var(--bg2);border:2px solid var(--border);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 3px 0 var(--border)">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">⚔️</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Battles Won</div>
+                                <div id="chalBattlesWon" style="font-size:18px;font-weight:900;color:var(--green-dk)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">💀</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Battles Lost</div>
+                                <div id="chalBattlesLost" style="font-size:18px;font-weight:900;color:var(--red)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">🛡️</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Defended</div>
+                                <div id="chalDefended" style="font-size:18px;font-weight:900;color:var(--blue-dk)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">😞</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Lost Defenses</div>
+                                <div id="chalLostDef" style="font-size:18px;font-weight:900;color:var(--orange)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">🔥</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Win Streak</div>
+                                <div id="chalWinStreak" style="font-size:18px;font-weight:900;color:var(--gold-dk)">0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="font-size:24px">⚡</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Best Time</div>
+                                <div id="chalBestTime" style="font-size:18px;font-weight:900;color:var(--green)">--</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;grid-column:1/-1">
+                            <div style="font-size:24px">🏅</div>
+                            <div style="flex:1">
+                                <div style="font-size:11px;color:var(--txt3);font-weight:700;text-transform:uppercase">Challenge Score</div>
+                                <div style="display:flex;align-items:baseline;gap:8px">
+                                    <div id="chalScore" style="font-size:22px;font-weight:900;color:var(--txt)">0</div>
+                                    <div id="chalRank" style="font-size:13px;font-weight:700;color:var(--txt3)"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="background:var(--blue-lt);border:2px solid var(--blue);border-radius:16px;padding:14px;text-align:center;box-shadow:0 3px 0 var(--blue-dk)">
+                    <div style="font-size:13px;font-weight:700;color:var(--blue-dk)">Score = (Battles Won × 3) + (Defended × 2) - (Lost × 1)</div>
+                </div>
+            </div>
+
+            <div class="sub-tab-content" id="chalLbTab">
+                <div id="challengeLeaderboard">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+
+            <div class="sub-tab-content" id="chalHistTab">
+                <div id="challengeHistory">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+        </div>
+
         <div class="screen" id="walletScreen">
             <h2 style="font-size:22px;font-weight:900;margin-bottom:16px">💰 Your Wallet</h2>
 
@@ -1756,9 +1840,9 @@
             <div class="nav-icon">⚡</div>
             <div class="nav-label">Quiz</div>
         </div>
-        <div class="nav-item" onclick="switchTab('practice')">
-            <div class="nav-icon">📚</div>
-            <div class="nav-label">Practice</div>
+        <div class="nav-item" onclick="switchTab('challenges')">
+            <div class="nav-icon">⚔️</div>
+            <div class="nav-label">Battle</div>
         </div>
         <div class="nav-item" onclick="switchTab('wallet')">
             <div class="nav-icon">💰</div>
@@ -1768,9 +1852,9 @@
             <div class="nav-icon">🏆</div>
             <div class="nav-label">Top</div>
         </div>
-        <div class="nav-item" onclick="switchTab('history')">
-            <div class="nav-icon">📜</div>
-            <div class="nav-label">History</div>
+        <div class="nav-item" onclick="switchTab('practice')">
+            <div class="nav-icon">📚</div>
+            <div class="nav-label">Practice</div>
         </div>
     </div>
 
@@ -1965,6 +2049,7 @@
             else if (tab === 'leaderboard') { showScreen('leaderboardScreen'); loadAllTimeLeaderboard() }
             else if (tab === 'history') { showScreen('historyScreen'); loadHistory() }
             else if (tab === 'practice') { showScreen('practiceScreen'); loadPracticeRounds() }
+            else if (tab === 'challenges') { showScreen('challengesScreen'); loadChallengeStats(); }
         }
 
         let nextRoundCountdownInterval = null;
@@ -3187,6 +3272,171 @@
             `;
             document.body.prepend(notifDiv);
             setTimeout(() => { if (notifDiv.parentElement) notifDiv.remove(); }, 30000);
+        }
+
+        // ─── CHALLENGE STATS / LEADERBOARD / HISTORY ─────────────────
+
+        function switchChallengeTab(tab) {
+            document.getElementById('chalStatsTabBtn').classList.remove('active');
+            document.getElementById('chalLbTabBtn').classList.remove('active');
+            document.getElementById('chalHistTabBtn').classList.remove('active');
+            document.getElementById('chalStatsTab').classList.remove('active');
+            document.getElementById('chalLbTab').classList.remove('active');
+            document.getElementById('chalHistTab').classList.remove('active');
+
+            if (tab === 'stats') {
+                document.getElementById('chalStatsTabBtn').classList.add('active');
+                document.getElementById('chalStatsTab').classList.add('active');
+                loadChallengeStats();
+            } else if (tab === 'leaderboard') {
+                document.getElementById('chalLbTabBtn').classList.add('active');
+                document.getElementById('chalLbTab').classList.add('active');
+                loadChallengeLeaderboard();
+            } else if (tab === 'history') {
+                document.getElementById('chalHistTabBtn').classList.add('active');
+                document.getElementById('chalHistTab').classList.add('active');
+                loadChallengeHistory();
+            }
+        }
+
+        async function loadChallengeStats() {
+            try {
+                const res = await fetch(`${API}/api/challenge/stats?user_id=${userId}`);
+                if (!res.ok) return;
+                const d = await res.json();
+
+                document.getElementById('chalBattlesWon').textContent = d.battles_won || 0;
+                document.getElementById('chalBattlesLost').textContent = d.battles_lost || 0;
+                document.getElementById('chalDefended').textContent = d.challenges_defended || 0;
+                document.getElementById('chalLostDef').textContent = d.challenges_lost || 0;
+                document.getElementById('chalWinStreak').textContent = d.win_streak || 0;
+                document.getElementById('chalBestTime').textContent = d.best_time_ms ? (d.best_time_ms / 1000).toFixed(1) + 's' : '--';
+                document.getElementById('chalScore').textContent = d.score || 0;
+                document.getElementById('chalRank').textContent = d.rank ? '(Rank #' + d.rank + ')' : '';
+
+                // Color the stats card based on score
+                const card = document.getElementById('challengeStatsCard');
+                if (d.score >= 20) {
+                    card.style.borderColor = 'var(--gold)';
+                    card.style.background = 'var(--gold-lt)';
+                    card.style.boxShadow = '0 3px 0 var(--gold-dk)';
+                } else if (d.score >= 10) {
+                    card.style.borderColor = 'var(--green)';
+                    card.style.background = 'var(--green-lt)';
+                    card.style.boxShadow = '0 3px 0 var(--green-dk)';
+                } else {
+                    card.style.borderColor = 'var(--border)';
+                    card.style.background = 'var(--bg2)';
+                    card.style.boxShadow = '0 3px 0 var(--border)';
+                }
+            } catch (e) {
+                console.error('Failed to load challenge stats:', e);
+            }
+        }
+
+        async function loadChallengeLeaderboard() {
+            try {
+                const res = await fetch(`${API}/api/challenge/leaderboard`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const c = document.getElementById('challengeLeaderboard');
+
+                if (!data.leaderboard || data.leaderboard.length === 0) {
+                    c.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No challenge battles yet! Be the first.</p>';
+                    return;
+                }
+
+                let h = '<div style="text-align:center;margin-bottom:16px;font-size:20px;font-weight:900">\u2694\uFE0F CHALLENGE LEADERBOARD</div>';
+
+                data.leaderboard.forEach((e, i) => {
+                    const cls = i === 0 ? 'first' : i === 1 ? 'second' : i === 2 ? 'third' : '';
+                    const medal = i === 0 ? '\uD83E\uDD47' : i === 1 ? '\uD83E\uDD48' : i === 2 ? '\uD83E\uDD49' : '';
+                    const isCurrentUser = e.user_id === userId;
+                    const userCls = isCurrentUser ? 'user-row' : '';
+                    const userBadge = isCurrentUser ? '<span class="user-badge">YOU</span>' : '';
+
+                    h += `<div class="lb-row ${cls} ${userCls}">
+                        ${medal ? '<span class="medal-icon">' + medal + '</span>' : '<div class="lb-rank">' + e.rank + '</div>'}
+                        <div class="lb-name">${e.user_name || 'Anonymous'}${userBadge}</div>
+                        <div style="margin-left:auto;display:flex;gap:12px;align-items:center">
+                            <div style="text-align:center">
+                                <div style="font-size:10px;color:var(--txt3);font-weight:700">\u2694\uFE0F</div>
+                                <div style="font-weight:800;font-size:13px;color:var(--green-dk)">${e.battles_won}</div>
+                            </div>
+                            <div style="text-align:center">
+                                <div style="font-size:10px;color:var(--txt3);font-weight:700">\uD83D\uDEE1\uFE0F</div>
+                                <div style="font-weight:800;font-size:13px;color:var(--blue-dk)">${e.challenges_defended}</div>
+                            </div>
+                            <div style="font-weight:900;font-size:16px;color:var(--gold-dk)">${e.score}</div>
+                        </div>
+                    </div>`;
+                });
+
+                c.innerHTML = h;
+            } catch (e) {
+                console.error('Failed to load challenge leaderboard:', e);
+            }
+        }
+
+        async function loadChallengeHistory() {
+            try {
+                const res = await fetch(`${API}/api/challenge/history?user_id=${userId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const c = document.getElementById('challengeHistory');
+
+                if (!data.history || data.history.length === 0) {
+                    c.innerHTML = '<p style="color:var(--txt3);text-align:center;padding:40px;font-weight:700">No battles yet! Challenge a friend after getting 4/4.</p>';
+                    return;
+                }
+
+                let h = '';
+                data.history.forEach(e => {
+                    let resultColor, resultText, resultIcon;
+                    if (e.result === 'won') {
+                        resultColor = 'var(--green)'; resultText = 'WON'; resultIcon = '\u2705';
+                    } else if (e.result === 'lost') {
+                        resultColor = 'var(--red)'; resultText = 'LOST'; resultIcon = '\u274C';
+                    } else if (e.result === 'pending') {
+                        resultColor = 'var(--txt3)'; resultText = 'PENDING'; resultIcon = '\u23F3';
+                    } else {
+                        resultColor = 'var(--txt3)'; resultText = 'EXPIRED'; resultIcon = '\u23F0';
+                    }
+
+                    const userTimeStr = e.user_time_ms ? (e.user_time_ms / 1000).toFixed(1) + 's' : '--';
+                    const oppTimeStr = e.opponent_time_ms ? (e.opponent_time_ms / 1000).toFixed(1) + 's' : '--';
+                    const roleLabel = e.user_role === 'challenger' ? 'Challenger' : 'Friend';
+                    const dateStr = e.created_at ? new Date(e.created_at + 'Z').toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+                    let actionBtn = '';
+                    if (e.result === 'pending' && e.user_role === 'friend') {
+                        actionBtn = '<div style="margin-top:8px"><button class="duo-btn" style="padding:8px 14px;font-size:12px" onclick="switchTab(\'quiz\')">Play now!</button></div>';
+                    } else if (e.result === 'pending' && e.user_role === 'challenger') {
+                        actionBtn = '<div style="font-size:12px;color:var(--txt3);font-weight:600;margin-top:4px">Waiting for ' + e.opponent_name + '...</div>';
+                    }
+
+                    h += `<div class="lb-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:8px">
+                        <div style="display:flex;align-items:center;justify-content:space-between">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-size:18px">${resultIcon}</span>
+                                <div>
+                                    <div style="font-size:14px;font-weight:800;color:var(--txt)">vs ${e.opponent_name}</div>
+                                    <div style="font-size:11px;color:var(--txt3);font-weight:600">${roleLabel} \u2022 ${dateStr}</div>
+                                </div>
+                            </div>
+                            <div style="text-align:right">
+                                <div style="font-size:12px;font-weight:900;color:${resultColor};text-transform:uppercase">${resultText}</div>
+                                <div style="font-size:12px;font-weight:700;color:var(--txt2)">${userTimeStr} vs ${oppTimeStr}</div>
+                            </div>
+                        </div>
+                        ${actionBtn}
+                    </div>`;
+                });
+
+                c.innerHTML = h;
+            } catch (e) {
+                console.error('Failed to load challenge history:', e);
+            }
         }
 
         loadCurrentRound();

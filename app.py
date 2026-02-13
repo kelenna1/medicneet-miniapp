@@ -966,7 +966,202 @@ async def api_challenge_my(user_id: str):
     conn.close()
     return {"sent": sent, "received": received, "notifications": notifications}
 
-@app.get("/api/wallet")
+@app.get("/api/challenge/stats")
+async def api_challenge_stats(user_id: str):
+    """Get challenge stats for a user"""
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+
+    conn = get_db(); c = conn.cursor()
+
+    # As challenger (sent challenges)
+    c.execute("SELECT COUNT(*) as cnt FROM challenges WHERE challenger_id = ?", (user_id,))
+    total_sent = c.fetchone()["cnt"]
+
+    # As friend (received challenges)
+    c.execute("SELECT COUNT(*) as cnt FROM challenges WHERE friend_id = ?", (user_id,))
+    total_received = c.fetchone()["cnt"]
+
+    # Challenges defended: sent challenges where friend couldn't beat time (status='lost' from friend perspective)
+    c.execute("SELECT COUNT(*) as cnt FROM challenges WHERE challenger_id = ? AND status = 'lost'", (user_id,))
+    challenges_defended = c.fetchone()["cnt"]
+
+    # Challenges lost: sent challenges where friend beat time (status='won' from friend perspective)
+    c.execute("SELECT COUNT(*) as cnt FROM challenges WHERE challenger_id = ? AND status = 'won'", (user_id,))
+    challenges_lost = c.fetchone()["cnt"]
+
+    # Battles won: as friend, where user beat challenger's time (status='won')
+    c.execute("SELECT COUNT(*) as cnt FROM challenges WHERE friend_id = ? AND status = 'won'", (user_id,))
+    battles_won = c.fetchone()["cnt"]
+
+    # Battles lost: as friend, where user couldn't beat time (status='lost')
+    c.execute("SELECT COUNT(*) as cnt FROM challenges WHERE friend_id = ? AND status = 'lost'", (user_id,))
+    battles_lost = c.fetchone()["cnt"]
+
+    # Best winning time across all challenges (as friend who won or challenger who defended)
+    best_time_ms = None
+    # Best time when winning as friend (beat challenger)
+    c.execute("SELECT MIN(friend_time_ms) as best FROM challenges WHERE friend_id = ? AND status = 'won' AND friend_time_ms IS NOT NULL", (user_id,))
+    row = c.fetchone()
+    if row and row["best"]:
+        best_time_ms = row["best"]
+    # Best time from defended challenges (challenger's original time held)
+    c.execute("SELECT MIN(challenger_time_ms) as best FROM challenges WHERE challenger_id = ? AND status = 'lost' AND challenger_time_ms IS NOT NULL", (user_id,))
+    row = c.fetchone()
+    if row and row["best"]:
+        if best_time_ms is None or row["best"] < best_time_ms:
+            best_time_ms = row["best"]
+
+    # Win streak: consecutive wins in either role, ordered by completion time
+    c.execute("""
+        SELECT
+            CASE
+                WHEN challenger_id = ? AND status = 'lost' THEN 'win'
+                WHEN friend_id = ? AND status = 'won' THEN 'win'
+                ELSE 'loss'
+            END as result
+        FROM challenges
+        WHERE (challenger_id = ? OR friend_id = ?) AND status IN ('won', 'lost')
+        ORDER BY completed_at DESC
+    """, (user_id, user_id, user_id, user_id))
+    win_streak = 0
+    for row in c.fetchall():
+        if row["result"] == "win":
+            win_streak += 1
+        else:
+            break
+
+    # Challenge score
+    score = (battles_won * 3) + (challenges_defended * 2) - (challenges_lost * 1)
+
+    # Rank on leaderboard
+    c.execute("""
+        SELECT user_id, score FROM (
+            SELECT user_id,
+                SUM(CASE WHEN role = 'friend' AND status = 'won' THEN 3 ELSE 0 END)
+                + SUM(CASE WHEN role = 'challenger' AND status = 'lost' THEN 2 ELSE 0 END)
+                - SUM(CASE WHEN role = 'challenger' AND status = 'won' THEN 1 ELSE 0 END)
+                as score
+            FROM (
+                SELECT challenger_id as user_id, 'challenger' as role, status FROM challenges WHERE status IN ('won','lost')
+                UNION ALL
+                SELECT friend_id as user_id, 'friend' as role, status FROM challenges WHERE status IN ('won','lost') AND friend_id IS NOT NULL
+            )
+            GROUP BY user_id
+        )
+        ORDER BY score DESC
+    """)
+    rank = 0
+    for idx, row in enumerate(c.fetchall(), 1):
+        if row["user_id"] == user_id:
+            rank = idx
+            break
+
+    conn.close()
+    return {
+        "total_challenges_sent": total_sent,
+        "total_challenges_received": total_received,
+        "challenges_defended": challenges_defended,
+        "challenges_lost": challenges_lost,
+        "battles_won": battles_won,
+        "battles_lost": battles_lost,
+        "win_streak": win_streak,
+        "best_time_ms": best_time_ms,
+        "score": score,
+        "rank": rank
+    }
+
+@app.get("/api/challenge/leaderboard")
+async def api_challenge_leaderboard():
+    """Get top 20 users by challenge score"""
+    conn = get_db(); c = conn.cursor()
+
+    c.execute("""
+        SELECT user_id, user_name,
+            SUM(CASE WHEN role = 'friend' AND status = 'won' THEN 3 ELSE 0 END)
+            + SUM(CASE WHEN role = 'challenger' AND status = 'lost' THEN 2 ELSE 0 END)
+            - SUM(CASE WHEN role = 'challenger' AND status = 'won' THEN 1 ELSE 0 END)
+            as score,
+            SUM(CASE WHEN role = 'friend' AND status = 'won' THEN 1 ELSE 0 END) as battles_won,
+            SUM(CASE WHEN role = 'challenger' AND status = 'lost' THEN 1 ELSE 0 END) as challenges_defended
+        FROM (
+            SELECT challenger_id as user_id, challenger_name as user_name, 'challenger' as role, status
+            FROM challenges WHERE status IN ('won','lost')
+            UNION ALL
+            SELECT friend_id as user_id, friend_name as user_name, 'friend' as role, status
+            FROM challenges WHERE status IN ('won','lost') AND friend_id IS NOT NULL
+        )
+        GROUP BY user_id
+        ORDER BY score DESC
+        LIMIT 20
+    """)
+
+    leaderboard = []
+    for idx, row in enumerate(c.fetchall(), 1):
+        leaderboard.append({
+            "rank": idx,
+            "user_id": row["user_id"],
+            "user_name": row["user_name"],
+            "score": row["score"],
+            "battles_won": row["battles_won"],
+            "challenges_defended": row["challenges_defended"]
+        })
+
+    conn.close()
+    return {"leaderboard": leaderboard}
+
+@app.get("/api/challenge/history")
+async def api_challenge_history(user_id: str):
+    """Get last 20 challenges involving this user"""
+    if not user_id:
+        raise HTTPException(400, "user_id required")
+
+    conn = get_db(); c = conn.cursor()
+
+    c.execute("""
+        SELECT * FROM challenges
+        WHERE challenger_id = ? OR friend_id = ?
+        ORDER BY COALESCE(completed_at, created_at) DESC
+        LIMIT 20
+    """, (user_id, user_id))
+
+    history = []
+    for row in c.fetchall():
+        ch = dict(row)
+        is_challenger = ch["challenger_id"] == user_id
+        user_role = "challenger" if is_challenger else "friend"
+
+        if is_challenger:
+            opponent_name = ch.get("friend_name") or "Waiting..."
+            user_time_ms = ch["challenger_time_ms"]
+            opponent_time_ms = ch.get("friend_time_ms")
+            # For challenger: 'lost' means they defended (friend couldn't beat), 'won' means friend beat them
+            if ch["status"] == "lost":
+                result = "won"
+            elif ch["status"] == "won":
+                result = "lost"
+            else:
+                result = ch["status"]  # pending/expired
+        else:
+            opponent_name = ch.get("challenger_name") or "Unknown"
+            user_time_ms = ch.get("friend_time_ms")
+            opponent_time_ms = ch["challenger_time_ms"]
+            # For friend: 'won' means they won, 'lost' means they lost
+            result = ch["status"]
+
+        history.append({
+            "challenge_code": ch["challenge_code"],
+            "opponent_name": opponent_name,
+            "user_role": user_role,
+            "result": result,
+            "user_time_ms": user_time_ms,
+            "opponent_time_ms": opponent_time_ms,
+            "round_id": ch.get("challenger_round_id"),
+            "created_at": ch["created_at"]
+        })
+
+    conn.close()
+    return {"history": history}
 async def api_wallet(user_id: str):
     """Get wallet balance and transactions for a user"""
     if not user_id:
