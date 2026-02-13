@@ -225,6 +225,7 @@ def maybe_create_scheduled_round():
             if len(q_ids) < 4:
                 c.execute('SELECT id FROM questions ORDER BY RANDOM() LIMIT 4')
                 q_ids = [q['id'] for q in c.fetchall()]
+            random.shuffle(q_ids)
             started = now_utc
             prize_ends = started + timedelta(minutes=PRIZE_WINDOW_MINUTES)
             ends = started + timedelta(minutes=ROUND_DURATION_MINUTES)
