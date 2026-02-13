@@ -1525,6 +1525,7 @@
                 <div class="result-time-label">seconds</div>
             </div>
             <div id="challengeResultContainer" style="display:none"></div>
+            <div id="challengeShareContainer" style="display:none"></div>
             <button class="challenge-friend-btn" id="challengeFriendBtn" onclick="challengeFriend()" style="display:none">
                 ⚔️ Challenge a Friend
             </button>
@@ -1802,7 +1803,6 @@
                 if (!res.ok) { activeChallengeCode = null; return; }
                 challengeInfo = await res.json();
                 if (challengeInfo.status !== 'pending') {
-                    // Challenge already completed/expired
                     const banner = document.getElementById('challengeBanner');
                     banner.style.display = 'block';
                     document.getElementById('challengeBannerTitle').textContent = 'Challenge ' + (challengeInfo.status === 'expired' ? 'Expired' : 'Completed');
@@ -1811,13 +1811,36 @@
                     activeChallengeCode = null;
                     return;
                 }
-                // Show challenge banner
                 const banner = document.getElementById('challengeBanner');
                 banner.style.display = 'block';
                 const timeStr = (challengeInfo.challenger_time_ms / 1000).toFixed(1);
-                document.getElementById('challengeBannerTitle').innerHTML = '&#x1F3C6; ' + challengeInfo.challenger_name + ' challenged you!';
-                document.getElementById('challengeBannerTime').textContent = timeStr + 's';
-                document.getElementById('challengeBannerInfo').innerHTML = 'Beat their time with 4/4 correct to win them &#x20B9;5!<br>Next live round: ' + (challengeInfo.next_round_time || 'Soon');
+                const cName = challengeInfo.challenger_name;
+                const nextTime = challengeInfo.next_round_time || 'Soon';
+                const curRound = challengeInfo.current_round_id;
+                const chalRound = challengeInfo.challenger_round_id;
+                const prizeActive = challengeInfo.prize_window_active;
+
+                if (curRound && curRound === chalRound && prizeActive) {
+                    // Same round is LIVE with prize window active
+                    document.getElementById('challengeBannerTitle').innerHTML = '\u{1F3C6} ' + cName + ' scored 4/4 in ' + timeStr + 's on this round!';
+                    document.getElementById('challengeBannerTime').textContent = timeStr + 's';
+                    document.getElementById('challengeBannerInfo').textContent = 'Beat their time!';
+                } else if (curRound && curRound === chalRound && !prizeActive) {
+                    // Same round but prize window over
+                    document.getElementById('challengeBannerTitle').innerHTML = '\u23F0 Prize window for this round is over';
+                    document.getElementById('challengeBannerTime').textContent = '';
+                    document.getElementById('challengeBannerInfo').innerHTML = 'Play the next round to attempt the challenge!<br>Next round: ' + nextTime;
+                } else if (curRound && curRound !== chalRound) {
+                    // Different round is active - friend can play it
+                    document.getElementById('challengeBannerTitle').innerHTML = '\u{1F3C6} ' + cName + ' scored 4/4 in ' + timeStr + 's!';
+                    document.getElementById('challengeBannerTime').textContent = timeStr + 's';
+                    document.getElementById('challengeBannerInfo').textContent = 'Play this round and beat their time!';
+                } else {
+                    // No round active
+                    document.getElementById('challengeBannerTitle').innerHTML = '\u23F0 No round active right now';
+                    document.getElementById('challengeBannerTime').textContent = '';
+                    document.getElementById('challengeBannerInfo').innerHTML = 'Next round: ' + nextTime + '<br>Come back and beat ' + cName + "'s " + timeStr + 's!';
+                }
             } catch (e) {
                 console.error('Failed to load challenge info:', e);
                 activeChallengeCode = null;
@@ -1843,11 +1866,10 @@
                 if (res.ok && data.challenge_code) {
                     const code = data.challenge_code;
                     const timeStr = (data.challenger_time_ms / 1000).toFixed(1);
-                    const shareUrl = 'https://t.me/Winners_neetbot/Medicneet?startapp=challenge_' + code;
-                    const shareText = '\uD83C\uDFC6 I scored 4/4 in ' + timeStr + 's on MedicNEET Quiz! Think you can beat me? Accept my challenge!';
-                    const tgShareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(shareText);
-                    window.open(tgShareUrl);
-                    btn.textContent = '\u2705 Challenge Sent!';
+                    const shareUrl = data.share_url;
+                    const shareText = '\uD83C\uDFC6 I scored 4/4 in ' + timeStr + 's on MedicNEET Quiz! Think you\'re faster? \u2694\uFE0F Prove it!\n\n\u23F0 Rounds daily: 7:00, 7:30, 8:00, 8:30 PM IST\n\uD83D\uDC49 ' + shareUrl;
+                    showChallengeShareScreen(shareUrl, shareText, timeStr);
+                    btn.style.display = 'none';
                 } else {
                     const errMsg = data.detail || 'Failed to create challenge';
                     alert(errMsg);
@@ -1859,6 +1881,41 @@
                 alert('Failed to create challenge. Try again.');
                 btn.disabled = false;
                 btn.textContent = '\u2694\uFE0F Challenge a Friend';
+            }
+        }
+
+        function showChallengeShareScreen(shareUrl, shareText, timeStr) {
+            const container = document.getElementById('challengeShareContainer');
+            const tgShareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(shareText);
+            container.innerHTML = `
+                <div style="background:linear-gradient(135deg, var(--green-lt) 0%, #e8ffe8 100%);border:2px solid var(--green);border-radius:18px;padding:20px;text-align:center;box-shadow:0 3px 0 var(--green-dk);margin-bottom:16px">
+                    <div style="font-size:36px;margin-bottom:8px">\u2694\uFE0F</div>
+                    <div style="font-size:18px;font-weight:900;color:var(--green-dk);margin-bottom:6px">Challenge Created!</div>
+                    <div style="font-size:14px;font-weight:700;color:var(--txt2);margin-bottom:4px">Your time: ${timeStr}s</div>
+                    <div style="font-size:13px;font-weight:600;color:var(--txt3)">Share with a friend to see if they can beat you!</div>
+                    <div style="display:flex;gap:10px;margin-top:16px">
+                        <button class="duo-btn blue" style="flex:1" onclick="window.open('${tgShareUrl}')">Share via Telegram</button>
+                        <button class="duo-btn" style="flex:1" onclick="copyChallengeLink('${shareUrl}', this)">Copy Link</button>
+                    </div>
+                </div>
+            `;
+            container.style.display = 'block';
+        }
+
+        function copyChallengeLink(url, btn) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(() => {
+                    btn.textContent = '\u2705 Copied!';
+                    setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
+                }).catch(() => {
+                    fallbackCopy(url);
+                    btn.textContent = '\u2705 Copied!';
+                    setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
+                });
+            } else {
+                fallbackCopy(url);
+                btn.textContent = '\u2705 Copied!';
+                setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
             }
         }
 
@@ -2381,43 +2438,72 @@
                 }
             }
 
-            // Show "Challenge a Friend" button if 4/4 correct
+            // Show "Challenge a Friend" button if 4/4 correct (and no challenge result to show)
             const challengeBtn = document.getElementById('challengeFriendBtn');
             const shareBtn = document.getElementById('shareChallengeBtn');
-            if (allCorrect) {
+            if (allCorrect && !data.challenge_result) {
                 challengeBtn.style.display = 'block';
                 shareBtn.style.display = 'none';
-            } else {
+            } else if (!allCorrect && !data.challenge_result) {
                 challengeBtn.style.display = 'none';
                 shareBtn.style.display = 'block';
+            } else {
+                // Challenge result present - buttons managed by challenge result logic below
+                challengeBtn.style.display = 'none';
+                shareBtn.style.display = 'none';
             }
 
             // Show challenge result if present
             const challengeResultContainer = document.getElementById('challengeResultContainer');
+            const challengeShareContainer = document.getElementById('challengeShareContainer');
+            challengeShareContainer.style.display = 'none';
+            challengeShareContainer.innerHTML = '';
             if (data.challenge_result) {
                 const cr = data.challenge_result;
                 const challengerTimeStr = (cr.challenger_time_ms / 1000).toFixed(1);
+                const yourTimeStr = (cr.your_time_ms / 1000).toFixed(1);
                 let crHTML = '';
                 if (cr.status === 'won') {
+                    // Friend won - beat the challenger
                     crHTML = `<div class="challenge-result-card challenge-won">
-                        <div style="font-size:36px;margin-bottom:8px">&#x1F389;</div>
+                        <div style="font-size:36px;margin-bottom:8px">\uD83D\uDD25</div>
                         <div style="font-size:18px;font-weight:900;color:var(--green-dk);margin-bottom:6px">You beat ${cr.challenger_name}!</div>
-                        <div style="font-size:14px;font-weight:700;color:var(--txt2)">They just earned &#x20B9;5 because of you!</div>
+                        <div style="font-size:14px;font-weight:700;color:var(--txt2)">${yourTimeStr}s vs their ${challengerTimeStr}s</div>
                     </div>`;
+                    // Show chain share button
+                    if (cr.chain_challenge_code && cr.chain_challenge_url) {
+                        const chainShareText = '\uD83D\uDD25 I defeated ' + cr.challenger_name + ' on MedicNEET Quiz! Beat MY time of ' + yourTimeStr + 's if you can! \u2694\uFE0F\n\n\u23F0 Rounds daily: 7:00, 7:30, 8:00, 8:30 PM IST\n\uD83D\uDC49 ' + cr.chain_challenge_url;
+                        const chainTgUrl = 'https://t.me/share/url?url=' + encodeURIComponent(cr.chain_challenge_url) + '&text=' + encodeURIComponent(chainShareText);
+                        challengeShareContainer.innerHTML = `
+                            <div style="background:linear-gradient(135deg, var(--gold-lt) 0%, #fff8e1 100%);border:2px solid var(--gold);border-radius:18px;padding:20px;text-align:center;box-shadow:0 3px 0 var(--gold-dk);margin-bottom:16px">
+                                <div style="font-size:16px;font-weight:900;color:var(--txt);margin-bottom:10px">Share your victory!</div>
+                                <div style="display:flex;gap:10px">
+                                    <button class="duo-btn blue" style="flex:1" onclick="window.open('${chainTgUrl}')">Share via Telegram</button>
+                                    <button class="duo-btn" style="flex:1" onclick="copyChallengeLink('${cr.chain_challenge_url}', this)">Copy Link</button>
+                                </div>
+                            </div>
+                        `;
+                        challengeShareContainer.style.display = 'block';
+                    }
+                    // Hide the normal challenge button since chain is auto-created
+                    challengeBtn.style.display = 'none';
                 } else if (cr.status === 'lost') {
+                    // Friend lost - challenger retains the win
                     crHTML = `<div class="challenge-result-card challenge-lost">
-                        <div style="font-size:36px;margin-bottom:8px">&#x1F614;</div>
+                        <div style="font-size:36px;margin-bottom:8px">\uD83D\uDC80</div>
                         <div style="font-size:18px;font-weight:900;color:var(--orange);margin-bottom:6px">So close!</div>
-                        <div style="font-size:14px;font-weight:700;color:var(--txt2)">You got 4/4 but ${cr.challenger_name}'s ${challengerTimeStr}s was faster. Try next round!</div>
+                        <div style="font-size:14px;font-weight:700;color:var(--txt2)">You got 4/4 but ${cr.challenger_name}'s ${challengerTimeStr}s was faster. Your time: ${yourTimeStr}s</div>
+                        <button class="duo-btn blue" style="margin-top:12px" onclick="switchTab('quiz')">Try again next round</button>
                     </div>`;
+                    challengeBtn.style.display = 'none';
                 }
                 challengeResultContainer.innerHTML = crHTML;
                 challengeResultContainer.style.display = 'block';
             } else if (activeChallengeCode && !allCorrect) {
                 challengeResultContainer.innerHTML = `<div class="challenge-result-card">
-                    <div style="font-size:36px;margin-bottom:8px">&#x1F4AA;</div>
-                    <div style="font-size:16px;font-weight:900;color:var(--txt);margin-bottom:6px">Challenge Active</div>
-                    <div style="font-size:14px;font-weight:700;color:var(--txt2)">You need 4/4 correct to complete the challenge. Try next round!</div>
+                    <div style="font-size:36px;margin-bottom:8px">\uD83D\uDCAA</div>
+                    <div style="font-size:16px;font-weight:900;color:var(--txt);margin-bottom:6px">You need 4/4 correct first!</div>
+                    <div style="font-size:14px;font-weight:700;color:var(--txt2)">Try again next round.</div>
                 </div>`;
                 challengeResultContainer.style.display = 'block';
             } else {
@@ -3030,8 +3116,82 @@
             }
         }
 
+        async function checkChallengeNotifications() {
+            try {
+                const res = await fetch(`${API}/api/challenge/my?user_id=${userId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.notifications || data.notifications.length === 0) return;
+
+                // Check localStorage for already-seen notifications
+                const seenKey = 'seen_challenge_notifs';
+                let seen = [];
+                try { seen = JSON.parse(localStorage.getItem(seenKey) || '[]'); } catch(e) { seen = []; }
+
+                for (const notif of data.notifications) {
+                    if (seen.includes(notif.challenge_code)) continue;
+
+                    // Mark as seen
+                    seen.push(notif.challenge_code);
+                    localStorage.setItem(seenKey, JSON.stringify(seen));
+
+                    const timeStr = (notif.challenger_time_ms / 1000).toFixed(1);
+                    if (notif.status === 'lost') {
+                        // Friend tried but couldn't beat challenger - challenger can reshare
+                        const reshareText = '\uD83C\uDFC6 ' + notif.friend_name + ' couldn\'t beat my ' + timeStr + 's! Can YOU? \u2694\uFE0F\n\n\u23F0 Rounds daily: 7:00, 7:30, 8:00, 8:30 PM IST\n\uD83D\uDC49 ' + notif.share_url;
+                        const tgUrl = 'https://t.me/share/url?url=' + encodeURIComponent(notif.share_url) + '&text=' + encodeURIComponent(reshareText);
+                        showChallengeNotification(
+                            notif.friend_name + ' tried your challenge but couldn\'t beat your time!',
+                            'Share it again:',
+                            notif.share_url,
+                            reshareText,
+                            tgUrl
+                        );
+                        break; // Show one at a time
+                    } else if (notif.status === 'won') {
+                        const friendTimeStr = notif.friend_time_ms ? (notif.friend_time_ms / 1000).toFixed(1) : '?';
+                        showChallengeNotification(
+                            notif.friend_name + ' beat your ' + timeStr + 's challenge with ' + friendTimeStr + 's!',
+                            'They\'ve created a new challenge from their victory.',
+                            null, null, null
+                        );
+                        break;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to check challenge notifications:', e);
+            }
+        }
+
+        function showChallengeNotification(title, subtitle, shareUrl, shareText, tgUrl) {
+            const notifDiv = document.createElement('div');
+            notifDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:200;padding:16px;background:linear-gradient(135deg, var(--gold-lt), #fff8e1);border-bottom:3px solid var(--gold);box-shadow:0 4px 12px rgba(0,0,0,0.15)';
+            let btnsHTML = '';
+            if (shareUrl && tgUrl) {
+                btnsHTML = `
+                    <div style="display:flex;gap:8px;margin-top:12px">
+                        <button class="duo-btn blue" style="flex:1;padding:10px;font-size:13px" onclick="window.open('${tgUrl}')">Share via Telegram</button>
+                        <button class="duo-btn" style="flex:1;padding:10px;font-size:13px" onclick="copyChallengeLink('${shareUrl}', this)">Copy Link</button>
+                    </div>
+                `;
+            }
+            notifDiv.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div style="flex:1">
+                        <div style="font-size:15px;font-weight:900;color:var(--txt);margin-bottom:4px">\u2694\uFE0F ${title}</div>
+                        <div style="font-size:13px;font-weight:600;color:var(--txt2)">${subtitle}</div>
+                    </div>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;font-size:20px;cursor:pointer;padding:4px">\u2715</button>
+                </div>
+                ${btnsHTML}
+            `;
+            document.body.prepend(notifDiv);
+            setTimeout(() => { if (notifDiv.parentElement) notifDiv.remove(); }, 30000);
+        }
+
         loadCurrentRound();
         loadWallet();
+        checkChallengeNotifications();
     </script>
 </body>
 

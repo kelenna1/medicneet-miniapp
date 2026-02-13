@@ -114,11 +114,16 @@ def init_db():
             friend_time_ms INTEGER,
             friend_round_id INTEGER,
             status TEXT DEFAULT 'pending',
-            reward_credited INTEGER DEFAULT 0,
+            chain_parent_id INTEGER,
             created_at TEXT,
             completed_at TEXT)"""
     ]:
         c.execute(sql)
+    # Migrate: add chain_parent_id to challenges if missing (for existing DBs)
+    try:
+        c.execute("ALTER TABLE challenges ADD COLUMN chain_parent_id INTEGER")
+    except:
+        pass
     conn.commit(); conn.close()
     logger.info("Database initialized")
 
@@ -636,33 +641,46 @@ async def api_submit(request: Request):
     c.execute("SELECT * FROM challenges WHERE friend_id = ? AND status = 'pending'", (uid,))
     pending_challenges = c.fetchall()
     for pch in pending_challenges:
+        # Determine if we should evaluate this challenge based on round matching
+        should_evaluate = False
+        if rid == pch["challenger_round_id"]:
+            # Same round - only evaluate if prize window is still active
+            if in_prize_window:
+                should_evaluate = True
+        elif rid > pch["challenger_round_id"]:
+            # Friend played a later round - always evaluate
+            should_evaluate = True
+
+        if not should_evaluate:
+            continue
+
         if ic and tms < pch["challenger_time_ms"]:
-            # Friend won - beat the time with 4/4
+            # Friend won - beat the challenger's time with 4/4
             c.execute("UPDATE challenges SET status = 'won', friend_time_ms = ?, friend_round_id = ?, completed_at = ? WHERE id = ?",
                      (tms, rid, now, pch["id"]))
-            # Credit ₹5 to challenger's wallet
-            challenger_id = pch["challenger_id"]
-            challenger_name = pch["challenger_name"]
-            c.execute("INSERT INTO wallets (user_id, user_name, balance, total_earned, created_at, updated_at) VALUES (?,?,5,5,?,?) ON CONFLICT(user_id) DO UPDATE SET balance = balance + 5, total_earned = total_earned + 5, updated_at = ?",
-                     (challenger_id, challenger_name, now, now, now))
-            c.execute("INSERT INTO transactions (user_id, amount, type, round_id, status, created_at) VALUES (?,?,?,?,?,?)",
-                     (challenger_id, 5, "win", rid, "completed", now))
-            c.execute("UPDATE challenges SET reward_credited = 1 WHERE id = ?", (pch["id"],))
+            # Auto-create chain challenge with friend's time as new target
+            chain_code = generate_challenge_code()
+            c.execute("""INSERT INTO challenges (challenge_code, challenger_id, challenger_name, challenger_time_ms, challenger_round_id, status, chain_parent_id, created_at)
+                         VALUES (?,?,?,?,?,?,?,?)""", (chain_code, uid, un, tms, rid, "pending", pch["id"], now))
+            chain_url = f"https://t.me/Winners_neetbot/Medicneet?startapp=challenge_{chain_code}"
             challenge_result = {
                 "status": "won",
                 "challenger_name": pch["challenger_name"],
                 "challenger_time_ms": pch["challenger_time_ms"],
-                "your_time_ms": tms
+                "your_time_ms": tms,
+                "chain_challenge_code": chain_code,
+                "chain_challenge_url": chain_url
             }
         elif ic and tms >= pch["challenger_time_ms"]:
-            # Friend got 4/4 but slower
+            # Friend got 4/4 but slower - challenger retains the win
             c.execute("UPDATE challenges SET status = 'lost', friend_time_ms = ?, friend_round_id = ?, completed_at = ? WHERE id = ?",
                      (tms, rid, now, pch["id"]))
             challenge_result = {
                 "status": "lost",
                 "challenger_name": pch["challenger_name"],
                 "challenger_time_ms": pch["challenger_time_ms"],
-                "your_time_ms": tms
+                "your_time_ms": tms,
+                "challenge_code": pch["challenge_code"]
             }
         # If not 4/4, leave as pending (they can try next round)
 
@@ -827,6 +845,7 @@ async def api_challenge_create(request: Request):
     un = data.get("user_name", "Anon")
     rid = data.get("round_id")
     tms = int(data.get("time_ms", 0))
+    chain_parent_id = data.get("chain_parent_id")
 
     if not all([uid, rid, tms]):
         raise HTTPException(400, "Missing fields")
@@ -846,16 +865,17 @@ async def api_challenge_create(request: Request):
         conn.close()
         raise HTTPException(400, "Maximum 3 active challenges allowed")
 
-    # One challenge per round per user
-    c.execute("SELECT id FROM challenges WHERE challenger_id = ? AND challenger_round_id = ?", (uid, rid))
-    if c.fetchone():
-        conn.close()
-        raise HTTPException(400, "You already created a challenge for this round")
+    # One challenge per round per user (skip for chain challenges)
+    if not chain_parent_id:
+        c.execute("SELECT id FROM challenges WHERE challenger_id = ? AND challenger_round_id = ? AND chain_parent_id IS NULL", (uid, rid))
+        if c.fetchone():
+            conn.close()
+            raise HTTPException(400, "You already created a challenge for this round")
 
     code = generate_challenge_code()
     now = datetime.utcnow().isoformat()
-    c.execute("""INSERT INTO challenges (challenge_code, challenger_id, challenger_name, challenger_time_ms, challenger_round_id, status, created_at)
-                 VALUES (?,?,?,?,?,?,?)""", (code, uid, un, tms, rid, "pending", now))
+    c.execute("""INSERT INTO challenges (challenge_code, challenger_id, challenger_name, challenger_time_ms, challenger_round_id, status, chain_parent_id, created_at)
+                 VALUES (?,?,?,?,?,?,?,?)""", (code, uid, un, tms, rid, "pending", chain_parent_id, now))
     conn.commit(); conn.close()
 
     share_url = f"https://t.me/Winners_neetbot/Medicneet?startapp=challenge_{code}"
@@ -877,9 +897,20 @@ async def api_challenge_info(code: str):
         "challenge_code": ch["challenge_code"],
         "challenger_name": ch["challenger_name"],
         "challenger_time_ms": ch["challenger_time_ms"],
+        "challenger_round_id": ch["challenger_round_id"],
         "status": ch["status"],
-        "next_round_time": None
+        "next_round_time": None,
+        "current_round_id": None,
+        "prize_window_active": False
     }
+
+    # Check current round status
+    now_utc = datetime.utcnow().isoformat()
+    c.execute("SELECT id, prize_ends_at, ends_at FROM rounds WHERE ends_at > ? ORDER BY started_at DESC LIMIT 1", (now_utc,))
+    current_round = c.fetchone()
+    if current_round:
+        result["current_round_id"] = current_round["id"]
+        result["prize_window_active"] = bool(current_round["prize_ends_at"] and now_utc <= current_round["prize_ends_at"])
 
     # Get next round time from schedule
     now_ist = datetime.now(IST)
@@ -907,14 +938,33 @@ async def api_challenge_my(user_id: str):
 
     # Sent challenges (user is challenger)
     c.execute("SELECT * FROM challenges WHERE challenger_id = ? ORDER BY created_at DESC LIMIT 20", (user_id,))
-    sent = [dict(r) for r in c.fetchall()]
+    sent = []
+    for r in c.fetchall():
+        ch = dict(r)
+        ch["share_url"] = f"https://t.me/Winners_neetbot/Medicneet?startapp=challenge_{ch['challenge_code']}"
+        sent.append(ch)
 
     # Received challenges (user is friend)
     c.execute("SELECT * FROM challenges WHERE friend_id = ? ORDER BY created_at DESC LIMIT 20", (user_id,))
     received = [dict(r) for r in c.fetchall()]
 
+    # Recent notifications: sent challenges that were completed in last 24 hours
+    now = datetime.utcnow()
+    cutoff = (now - timedelta(hours=24)).isoformat()
+    notifications = []
+    for ch in sent:
+        if ch["status"] in ("won", "lost") and ch.get("completed_at") and ch["completed_at"] >= cutoff:
+            notifications.append({
+                "challenge_code": ch["challenge_code"],
+                "share_url": ch["share_url"],
+                "friend_name": ch.get("friend_name", "Someone"),
+                "friend_time_ms": ch.get("friend_time_ms"),
+                "challenger_time_ms": ch["challenger_time_ms"],
+                "status": ch["status"]
+            })
+
     conn.close()
-    return {"sent": sent, "received": received}
+    return {"sent": sent, "received": received, "notifications": notifications}
 
 @app.get("/api/wallet")
 async def api_wallet(user_id: str):
