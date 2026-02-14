@@ -1541,6 +1541,192 @@
             color: rgba(255,255,255,0.45);
             max-width: 260px;
         }
+
+        /* ── Withdrawal Checklist Styles ── */
+        .wg-progress-bar {
+            width: 100%;
+            height: 12px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .wg-progress-fill {
+            height: 100%;
+            background: var(--green);
+            border-radius: 6px;
+            transition: width 0.4s ease;
+        }
+        .wg-progress-text {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--txt2);
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .wg-task {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 0 var(--border);
+            background: var(--bg);
+        }
+        .wg-task.completed {
+            border-color: var(--green);
+            background: var(--green-lt);
+            box-shadow: 0 2px 0 var(--green-dk);
+        }
+        .wg-task-icon {
+            font-size: 22px;
+            flex-shrink: 0;
+            width: 32px;
+            text-align: center;
+        }
+        .wg-task-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .wg-task-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--txt);
+            line-height: 1.3;
+        }
+        .wg-task-sub {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--txt3);
+            margin-top: 2px;
+        }
+        .wg-task-status {
+            flex-shrink: 0;
+        }
+        .wg-check {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 900;
+        }
+        .wg-action-btn {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 12px;
+            background: var(--blue);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            font-family: inherit;
+            cursor: pointer;
+            white-space: nowrap;
+            box-shadow: 0 2px 0 var(--blue-dk);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .wg-action-btn:active {
+            transform: translateY(2px);
+            box-shadow: none;
+        }
+        .wg-referral-box {
+            background: var(--bg2);
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+        .wg-referral-link {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--blue);
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+        .wg-referral-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .wg-upi-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg2);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: inherit;
+            font-weight: 600;
+            outline: none;
+            margin-top: 8px;
+        }
+        .wg-upi-input:focus {
+            border-color: var(--blue);
+        }
+        .wg-otp-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .wg-otp-input {
+            flex: 1;
+            padding: 10px 14px;
+            background: var(--bg2);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 16px;
+            font-family: inherit;
+            font-weight: 700;
+            outline: none;
+            letter-spacing: 4px;
+            text-align: center;
+        }
+        .wg-otp-input:focus {
+            border-color: var(--blue);
+        }
+        .wg-submit-btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 16px;
+            font-size: 17px;
+            font-weight: 900;
+            font-family: inherit;
+            cursor: pointer;
+            color: #fff;
+            background: var(--green);
+            box-shadow: 0 4px 0 var(--green-dk);
+            margin-top: 20px;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform .05s;
+        }
+        .wg-submit-btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+        .wg-submit-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .wg-back-btn {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            background: var(--bg);
+            color: var(--txt2);
+            margin-top: 10px;
+            -webkit-tap-highlight-color: transparent;
+        }
     </style>
 </head>
 
@@ -1875,12 +2061,8 @@
             <div id="withdrawSection" style="display:none;margin-bottom:20px">
                 <div class="winner-form">
                     <h3>💸 Withdraw Money</h3>
-                    <p style="color:var(--txt2);font-size:13px;margin-bottom:14px;text-align:center">Minimum withdrawal: ₹50</p>
-                    <div class="form-group">
-                        <label>Your UPI ID</label>
-                        <input type="text" class="form-input" id="withdrawUpiInput" placeholder="name@upi or 9876543210@paytm">
-                    </div>
-                    <button class="duo-btn gold" id="withdrawBtn" onclick="submitWithdrawal()" disabled>Withdraw ₹<span id="withdrawAmount">0</span></button>
+                    <p style="color:var(--txt2);font-size:13px;margin-bottom:14px;text-align:center">Complete checklist tasks to withdraw</p>
+                    <button class="duo-btn gold" id="withdrawBtn" onclick="openWithdrawChecklist()">Withdraw ₹<span id="withdrawAmount">0</span></button>
                 </div>
             </div>
 
@@ -1900,6 +2082,23 @@
                     <p style="color:var(--txt3);text-align:center;padding:20px;font-weight:700">No transactions yet</p>
                 </div>
             </div>
+        </div>
+
+        <div class="screen" id="withdrawChecklistScreen">
+            <h2 style="font-size:22px;font-weight:900;margin-bottom:4px">💸 Withdraw</h2>
+            <p style="color:var(--txt2);font-size:13px;font-weight:600;margin-bottom:16px">Complete all tasks to withdraw your earnings</p>
+
+            <div class="wg-progress-bar">
+                <div class="wg-progress-fill" id="wgProgressFill" style="width:0%"></div>
+            </div>
+            <div class="wg-progress-text" id="wgProgressText">0/11 tasks completed</div>
+
+            <div id="wgTasksList"></div>
+
+            <button class="wg-submit-btn" id="wgSubmitBtn" onclick="submitWithdrawalRequest()" disabled>
+                Submit Withdrawal Request
+            </button>
+            <button class="wg-back-btn" onclick="switchTab('wallet')">Back to Wallet</button>
         </div>
     </div>
 
@@ -1946,12 +2145,22 @@
         let activeChallengeCode = null;
         let challengeInfo = null;
 
-        // Parse start_param for challenge code
+        // Parse start_param for challenge code or referral
         (function() {
             const startParam = tg?.initDataUnsafe?.start_param || '';
             if (startParam.startsWith('challenge_')) {
                 activeChallengeCode = startParam.replace('challenge_', '');
                 loadChallengeInfo(activeChallengeCode);
+            } else if (startParam.startsWith('ref_')) {
+                const referrerId = startParam.replace('ref_', '');
+                if (referrerId && referrerId !== userId) {
+                    // Log referral
+                    fetch(`${API}/api/referral`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({referrer_id: referrerId, referee_id: userId})
+                    }).catch(() => {});
+                }
             }
         })();
 
@@ -3169,8 +3378,6 @@
                     document.getElementById('withdrawSection').style.display = 'block';
                     document.getElementById('withdrawMinMessage').style.display = 'none';
                     document.getElementById('withdrawAmount').textContent = balance;
-                    document.getElementById('withdrawUpiInput').value = data.upi_id || '';
-                    checkWithdrawReady();
                 } else {
                     document.getElementById('withdrawSection').style.display = 'none';
                     document.getElementById('withdrawMinMessage').style.display = 'block';
@@ -3273,63 +3480,336 @@
             }
         }
 
-        function checkWithdrawReady() {
-            const upiInput = document.getElementById('withdrawUpiInput');
-            const withdrawBtn = document.getElementById('withdrawBtn');
-            if (upiInput && withdrawBtn) {
-                withdrawBtn.disabled = !upiInput.value.trim() || !upiInput.value.includes('@');
+        // ─── WITHDRAWAL GATE CHECKLIST ─────────────────────
+
+        let wgTasksData = null;
+        let wgReferralLink = '';
+
+        function openWithdrawChecklist() {
+            showScreen('withdrawChecklistScreen');
+            loadWithdrawTasks();
+        }
+
+        async function loadWithdrawTasks() {
+            const container = document.getElementById('wgTasksList');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+            try {
+                const res = await fetch(`${API}/api/withdraw/tasks?user_id=${userId}`);
+                const data = await res.json();
+                wgTasksData = data.tasks;
+                wgReferralLink = data.referral_link;
+
+                // Update progress
+                const pct = Math.round((data.completed_count / data.total_count) * 100);
+                document.getElementById('wgProgressFill').style.width = pct + '%';
+                document.getElementById('wgProgressText').textContent = data.completed_count + '/' + data.total_count + ' tasks completed';
+
+                // Enable submit button if all done
+                document.getElementById('wgSubmitBtn').disabled = !data.all_completed;
+
+                // Render tasks
+                renderWithdrawTasks(data.tasks);
+            } catch (e) {
+                console.error('Failed to load withdrawal tasks:', e);
+                container.innerHTML = '<p style="color:var(--red);text-align:center;padding:20px;font-weight:700">Failed to load. Try again.</p>';
             }
         }
 
-        document.getElementById('withdrawUpiInput')?.addEventListener('input', checkWithdrawReady);
+        function renderWithdrawTasks(tasks) {
+            const container = document.getElementById('wgTasksList');
+            let html = '';
 
-        async function submitWithdrawal() {
-            const upiId = document.getElementById('withdrawUpiInput').value.trim();
+            // 1. min_balance
+            const bal = tasks.min_balance;
+            html += buildTaskRow('min_balance', '\uD83D\uDCB0', 'Minimum \u20B950 balance', bal.completed ? 'Balance: \u20B9' + bal.value : 'Current: \u20B9' + bal.value, bal.completed, null);
+
+            // 2. min_rounds
+            const rounds = tasks.min_rounds;
+            html += buildTaskRow('min_rounds', '\uD83C\uDFAF', 'Play at least 20 rounds', rounds.value + '/20 rounds played', rounds.completed, null);
+
+            // 3. install_app
+            html += buildTaskRow('install_app', '\uD83D\uDCF1', 'Install MedicNEET App', null, tasks.install_app.completed,
+                tasks.install_app.completed ? null : {label: 'Install', onclick: "wgOpenLink('https://play.google.com/store/apps/details?id=com.halalfire.medicneet&hl=en', 'install_app')"});
+
+            // 4. rate_app
+            html += buildTaskRow('rate_app', '\u2B50', 'Rate us 5 stars', null, tasks.rate_app.completed,
+                tasks.rate_app.completed ? null : {label: 'Rate', onclick: "wgOpenLink('https://play.google.com/store/apps/details?id=com.halalfire.medicneet&hl=en', 'rate_app')"});
+
+            // 5. follow_channel
+            html += buildTaskRow('follow_channel', '\uD83D\uDCE2', 'Follow our Telegram Channel', null, tasks.follow_channel.completed,
+                tasks.follow_channel.completed ? null : {label: 'Follow', onclick: "wgOpenTelegramLink('https://t.me/bioneettraps', 'follow_channel')"});
+
+            // 6. join_group
+            html += buildTaskRow('join_group', '\uD83D\uDC65', 'Join our Telegram Group', null, tasks.join_group.completed,
+                tasks.join_group.completed ? null : {label: 'Join', onclick: "wgOpenTelegramLink('https://t.me/neetbiotraps', 'join_group')"});
+
+            // 7. subscribe_yt
+            html += buildTaskRow('subscribe_yt', '\uD83C\uDFAC', 'Subscribe YouTube Channel', null, tasks.subscribe_yt.completed,
+                tasks.subscribe_yt.completed ? null : {label: 'Subscribe', onclick: "wgOpenLink('https://www.youtube.com/channel/UC3UqxsnFGEwxa7wcLwJ7eog', 'subscribe_yt')"});
+
+            // 8. follow_ig
+            html += buildTaskRow('follow_ig', '\uD83D\uDCF8', 'Follow us on Instagram', null, tasks.follow_ig.completed,
+                tasks.follow_ig.completed ? null : {label: 'Follow', onclick: "wgOpenLink('https://www.instagram.com/medicneet.team/', 'follow_ig')"});
+
+            // 9. share_friends (special: referral)
+            const sf = tasks.share_friends;
+            let shareExtra = '';
+            if (!sf.completed) {
+                shareExtra = '<div class="wg-referral-box">'
+                    + '<div class="wg-referral-link" id="wgRefLink">' + wgReferralLink + '</div>'
+                    + '<div class="wg-referral-actions">'
+                    + '<button class="wg-action-btn" onclick="wgCopyReferral()" style="flex:1">Copy Link</button>'
+                    + '<button class="wg-action-btn" onclick="wgShareReferral()" style="flex:1;background:var(--green);box-shadow:0 2px 0 var(--green-dk)">Share</button>'
+                    + '</div></div>';
+            }
+            html += '<div class="wg-task' + (sf.completed ? ' completed' : '') + '">'
+                + '<div class="wg-task-icon">\uD83D\uDD17</div>'
+                + '<div class="wg-task-info">'
+                + '<div class="wg-task-title">Share with 3 friends</div>'
+                + '<div class="wg-task-sub">' + sf.value + '/3 friends joined</div>'
+                + shareExtra
+                + '</div>'
+                + '<div class="wg-task-status">' + (sf.completed ? '<div class="wg-check">\u2713</div>' : '') + '</div>'
+                + '</div>';
+
+            // 10. upi_id (special: input)
+            const upi = tasks.upi_id;
+            let upiExtra = '';
+            if (!upi.completed) {
+                upiExtra = '<div style="display:flex;gap:8px;margin-top:8px">'
+                    + '<input type="text" class="wg-upi-input" id="wgUpiInput" placeholder="name@upi or phone@paytm" style="margin-top:0">'
+                    + '<button class="wg-action-btn" onclick="wgSaveUpi()">Save</button>'
+                    + '</div>';
+            }
+            html += '<div class="wg-task' + (upi.completed ? ' completed' : '') + '">'
+                + '<div class="wg-task-icon">\uD83D\uDCB3</div>'
+                + '<div class="wg-task-info">'
+                + '<div class="wg-task-title">Enter UPI ID</div>'
+                + (upi.completed ? '<div class="wg-task-sub">' + upi.value + '</div>' : '<div class="wg-task-sub">For receiving payment</div>' + upiExtra)
+                + '</div>'
+                + '<div class="wg-task-status">' + (upi.completed ? '<div class="wg-check">\u2713</div>' : '') + '</div>'
+                + '</div>';
+
+            // 11. otp_verified (special: OTP flow)
+            const otp = tasks.otp_verified;
+            let otpExtra = '';
+            if (!otp.completed) {
+                otpExtra = '<div id="wgOtpSection">'
+                    + '<button class="wg-action-btn" id="wgSendOtpBtn" onclick="wgSendOtp()" style="margin-top:8px">Send OTP</button>'
+                    + '<div id="wgOtpInputRow" style="display:none" class="wg-otp-row">'
+                    + '<input type="text" class="wg-otp-input" id="wgOtpInput" placeholder="Enter 6-digit OTP" maxlength="6" inputmode="numeric">'
+                    + '<button class="wg-action-btn" onclick="wgVerifyOtp()">Verify</button>'
+                    + '</div>'
+                    + '</div>';
+            }
+            html += '<div class="wg-task' + (otp.completed ? ' completed' : '') + '">'
+                + '<div class="wg-task-icon">\uD83D\uDD10</div>'
+                + '<div class="wg-task-info">'
+                + '<div class="wg-task-title">Verify OTP</div>'
+                + (otp.completed ? '<div class="wg-task-sub">Verified</div>' : '<div class="wg-task-sub">We\'ll send OTP to your Telegram</div>' + otpExtra)
+                + '</div>'
+                + '<div class="wg-task-status">' + (otp.completed ? '<div class="wg-check">\u2713</div>' : '') + '</div>'
+                + '</div>';
+
+            container.innerHTML = html;
+        }
+
+        function buildTaskRow(id, icon, title, subtitle, completed, action) {
+            let statusHTML = '';
+            if (completed) {
+                statusHTML = '<div class="wg-check">\u2713</div>';
+            } else if (action) {
+                statusHTML = '<button class="wg-action-btn" onclick="' + action.onclick + '">' + action.label + '</button>';
+            }
+            return '<div class="wg-task' + (completed ? ' completed' : '') + '">'
+                + '<div class="wg-task-icon">' + icon + '</div>'
+                + '<div class="wg-task-info">'
+                + '<div class="wg-task-title">' + title + '</div>'
+                + (subtitle ? '<div class="wg-task-sub">' + subtitle + '</div>' : '')
+                + '</div>'
+                + '<div class="wg-task-status">' + statusHTML + '</div>'
+                + '</div>';
+        }
+
+        // Track if external link was opened for "done" confirmation
+        let wgPendingTask = null;
+
+        function wgOpenLink(url, taskName) {
+            window.open(url, '_blank');
+            wgPendingTask = taskName;
+            // Show a "Done" confirmation after a brief delay
+            setTimeout(() => {
+                if (wgPendingTask === taskName) {
+                    wgShowDoneConfirm(taskName);
+                }
+            }, 2000);
+        }
+
+        function wgOpenTelegramLink(url, taskName) {
+            window.open(url, '_blank');
+            // For Telegram channel/group, auto-verify after delay
+            setTimeout(() => {
+                loadWithdrawTasks();
+            }, 3000);
+        }
+
+        function wgShowDoneConfirm(taskName) {
+            const confirmed = confirm("Have you completed this task?");
+            if (confirmed) {
+                wgCompleteTask(taskName);
+            }
+            wgPendingTask = null;
+        }
+
+        async function wgCompleteTask(taskName) {
+            try {
+                const res = await fetch(`${API}/api/withdraw/complete-task`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: userId, task: taskName})
+                });
+                if (res.ok) {
+                    loadWithdrawTasks();
+                }
+            } catch (e) {
+                console.error('Failed to complete task:', e);
+            }
+        }
+
+        function wgCopyReferral() {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(wgReferralLink).then(() => {
+                    alert('Referral link copied!');
+                }).catch(() => {
+                    fallbackCopy(wgReferralLink);
+                });
+            } else {
+                fallbackCopy(wgReferralLink);
+            }
+        }
+
+        function wgShareReferral() {
+            const shareText = 'Play MedicNEET Quiz and win real cash prizes! Join using my referral link:\n' + wgReferralLink;
+            if (navigator.share) {
+                navigator.share({text: shareText}).catch(() => {});
+            } else {
+                const tgUrl = 'https://t.me/share/url?url=' + encodeURIComponent(wgReferralLink) + '&text=' + encodeURIComponent(shareText);
+                window.open(tgUrl, '_blank');
+            }
+        }
+
+        async function wgSaveUpi() {
+            const input = document.getElementById('wgUpiInput');
+            const upiId = input ? input.value.trim() : '';
             if (!upiId || !upiId.includes('@')) {
-                alert('Please enter a valid UPI ID');
+                alert('Please enter a valid UPI ID (e.g. name@upi)');
                 return;
             }
+            try {
+                const res = await fetch(`${API}/api/withdraw/upi`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: userId, upi_id: upiId})
+                });
+                if (res.ok) {
+                    loadWithdrawTasks();
+                } else {
+                    const d = await res.json();
+                    alert(d.detail || 'Failed to save UPI ID');
+                }
+            } catch (e) {
+                console.error('Failed to save UPI:', e);
+                alert('Failed to save UPI ID. Try again.');
+            }
+        }
 
-            const withdrawBtn = document.getElementById('withdrawBtn');
-            withdrawBtn.disabled = true;
-            withdrawBtn.textContent = 'Processing...';
+        async function wgSendOtp() {
+            const btn = document.getElementById('wgSendOtpBtn');
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            try {
+                const res = await fetch(`${API}/api/withdraw/send-otp`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: userId})
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    btn.textContent = 'OTP Sent!';
+                    document.getElementById('wgOtpInputRow').style.display = 'flex';
+                } else {
+                    alert(data.detail || 'Failed to send OTP');
+                    btn.disabled = false;
+                    btn.textContent = 'Send OTP';
+                }
+            } catch (e) {
+                console.error('Failed to send OTP:', e);
+                alert('Failed to send OTP. Try again.');
+                btn.disabled = false;
+                btn.textContent = 'Send OTP';
+            }
+        }
+
+        async function wgVerifyOtp() {
+            const input = document.getElementById('wgOtpInput');
+            const otp = input ? input.value.trim() : '';
+            if (!otp || otp.length !== 6) {
+                alert('Please enter the 6-digit OTP');
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/api/withdraw/verify-otp`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: userId, otp: otp})
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    loadWithdrawTasks();
+                } else {
+                    alert(data.detail || 'Invalid OTP');
+                }
+            } catch (e) {
+                console.error('Failed to verify OTP:', e);
+                alert('Failed to verify OTP. Try again.');
+            }
+        }
+
+        async function submitWithdrawalRequest() {
+            const btn = document.getElementById('wgSubmitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
 
             try {
-                const res = await fetch(`${API}/api/withdraw`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        user_id: userId,
-                        user_name: userName,
-                        upi_id: upiId
-                    })
-                });
+                const balanceText = document.getElementById('walletCurrentBalance').textContent;
+                const amount = parseInt(balanceText) || 0;
 
+                const res = await fetch(`${API}/api/withdraw/request`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: userId, amount: amount})
+                });
                 const data = await res.json();
 
                 if (res.ok && data.success) {
-                    // Hide withdraw form, show success message
+                    // Show success
+                    showScreen('walletScreen');
                     document.getElementById('withdrawSection').style.display = 'none';
                     document.getElementById('withdrawSuccessMessage').style.display = 'block';
-
-                    // Update balance
                     document.getElementById('walletBalance').textContent = '0';
                     document.getElementById('walletCurrentBalance').textContent = '0';
-
-                    // Reload wallet after 3 seconds
-                    setTimeout(() => {
-                        loadWallet();
-                    }, 3000);
+                    setTimeout(() => { loadWallet(); }, 3000);
                 } else {
                     alert(data.detail || 'Withdrawal failed. Please try again.');
-                    withdrawBtn.disabled = false;
-                    withdrawBtn.textContent = `Withdraw ₹${document.getElementById('withdrawAmount').textContent}`;
+                    btn.disabled = false;
+                    btn.textContent = 'Submit Withdrawal Request';
                 }
             } catch (e) {
-                console.error('Withdrawal error:', e);
+                console.error('Withdrawal request error:', e);
                 alert('Withdrawal failed. Please try again.');
-                withdrawBtn.disabled = false;
-                withdrawBtn.textContent = `Withdraw ₹${document.getElementById('withdrawAmount').textContent}`;
+                btn.disabled = false;
+                btn.textContent = 'Submit Withdrawal Request';
             }
         }
 
