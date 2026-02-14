@@ -1463,6 +1463,32 @@
             border-color: var(--orange);
             box-shadow: 0 3px 0 var(--orange);
         }
+
+        /* === Quiz Copy/Screenshot Protection === */
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+
+        img {
+            -webkit-user-drag: none;
+            user-drag: none;
+        }
+
+        * {
+            -webkit-touch-callout: none;
+        }
+
+        /* Allow selection in input fields */
+        input, textarea, .form-input, .notify-input {
+            user-select: text;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            -webkit-touch-callout: default;
+        }
     </style>
 </head>
 
@@ -1842,7 +1868,11 @@
     </div>
 
     <script>
-        const tg = window.Telegram?.WebApp; if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#58cc02'); tg.setBackgroundColor('#ffffff') }
+        const tg = window.Telegram?.WebApp; if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#58cc02'); tg.setBackgroundColor('#ffffff'); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); }
+
+        /* Quiz copy/screenshot protection */
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && ['c','a','u','s','p'].includes(e.key.toLowerCase())) e.preventDefault(); });
         const user = tg?.initDataUnsafe?.user || { id: 'test_' + Date.now(), first_name: 'Test' };
         const userId = String(user.id), userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Anonymous', initData = tg?.initData || '';
         const APP_STATUS = '{{ app_status }}', PLAYSTORE_LINK = '{{ playstore_link }}';
