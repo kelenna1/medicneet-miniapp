@@ -552,6 +552,10 @@ async def api_submit(request: Request):
     if not all([rid, uid, tms]) or not isinstance(answers, list) or len(answers) != 4:
         raise HTTPException(400, "Missing fields or invalid answers format")
 
+    # Validate question_times: must be a list of exactly 4 elements
+    if not isinstance(question_times, list) or len(question_times) != 4:
+        return JSONResponse({"error": "Invalid submission data"}, status_code=400)
+
     # Normalize answers
     answers = [str(a).upper().strip() for a in answers]
 
@@ -615,8 +619,8 @@ async def api_submit(request: Request):
     if all_correct and isinstance(question_times, list) and len(question_times) == 4:
         try:
             qt = [int(t) if t is not None else 0 for t in question_times]
-            # Calculate gaps: gap1 = q1_time, gap2 = q2_time - q1_time, etc.
-            gaps = [qt[0]]
+            # Calculate gaps between consecutive questions only (skip first absolute time)
+            gaps = []
             for i in range(1, 4):
                 gaps.append(qt[i] - qt[i - 1])
             if any(g < 3000 for g in gaps):
