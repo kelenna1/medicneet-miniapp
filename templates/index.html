@@ -1489,10 +1489,69 @@
             -ms-user-select: text;
             -webkit-touch-callout: default;
         }
+
+        /* Blur overlay for tab-switch detection */
+        .blur-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 99999;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            pointer-events: all;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 12px;
+            padding: 24px;
+        }
+        .blur-overlay.active {
+            display: flex;
+        }
+        .blur-overlay-icon {
+            font-size: 64px;
+            line-height: 1;
+        }
+        .blur-overlay-title {
+            font-size: 22px;
+            font-weight: 900;
+            color: #fff;
+        }
+        .blur-overlay-msg {
+            font-size: 15px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.7);
+        }
+        .blur-overlay-timer {
+            font-size: 72px;
+            font-weight: 900;
+            color: var(--red);
+            line-height: 1;
+            margin: 12px 0;
+            font-variant-numeric: tabular-nums;
+        }
+        .blur-overlay-hint {
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.45);
+            max-width: 260px;
+        }
     </style>
 </head>
 
 <body>
+    <div class="blur-overlay" id="blurOverlay">
+        <div class="blur-overlay-icon">📸</div>
+        <div class="blur-overlay-title">You switched to another app!</div>
+        <div class="blur-overlay-msg">Screen is locked for security. Please wait.</div>
+        <div class="blur-overlay-timer" id="blurCountdown">60</div>
+        <div class="blur-overlay-hint">This prevents using AI tools during the quiz</div>
+    </div>
     <div class="header">
         <div class="logo">
             <div class="logo-icon">🦉</div>
@@ -3482,6 +3541,43 @@
         loadCurrentRound();
         loadWallet();
         checkChallengeNotifications();
+
+        /* ── Blur overlay with countdown on tab switch ── */
+        (function() {
+            var blurOverlay = document.getElementById('blurOverlay');
+            var blurCountdown = document.getElementById('blurCountdown');
+            var blurInterval = null;
+            var blurSeconds = 0;
+
+            function isQuizActive() {
+                var qz = document.getElementById('quizScreen');
+                var pq = document.getElementById('practiceQuizScreen');
+                return (qz && qz.classList.contains('active')) || (pq && pq.classList.contains('active'));
+            }
+
+            function stopBlurTimer() {
+                if (blurInterval) { clearInterval(blurInterval); blurInterval = null; }
+                blurOverlay.classList.remove('active');
+            }
+
+            function startBlurTimer() {
+                blurSeconds = 60;
+                blurCountdown.textContent = blurSeconds;
+                blurOverlay.classList.add('active');
+                if (blurInterval) clearInterval(blurInterval);
+                blurInterval = setInterval(function() {
+                    blurSeconds--;
+                    blurCountdown.textContent = blurSeconds;
+                    if (blurSeconds <= 0) { stopBlurTimer(); }
+                }, 1000);
+            }
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    if (isQuizActive()) { startBlurTimer(); }
+                }
+            });
+        })();
     </script>
 </body>
 
