@@ -1625,7 +1625,7 @@
             <div id="top10Notification" style="display:none;background:var(--green-lt);border:2px solid var(--green);border-radius:18px;padding:16px;margin-bottom:16px;text-align:center;box-shadow:0 3px 0 var(--green-dk)">
                 <div style="font-size:32px;margin-bottom:8px">🎉</div>
                 <div style="font-size:18px;font-weight:900;color:var(--green-dk);margin-bottom:4px" id="top10Title">You're in Top 10!</div>
-                <div style="font-size:14px;font-weight:700;color:var(--txt2)" id="top10Sub">₹5 added to wallet</div>
+                <div style="font-size:14px;font-weight:700;color:var(--txt2)" id="top10Sub">Results at round end</div>
             </div>
             <div id="appCTA"></div>
             <div class="lb-section" id="roundLeaderboard"></div>
@@ -2510,7 +2510,7 @@
                 document.getElementById('resultIcon').textContent = '🏆';
                 document.getElementById('resultTitle').textContent = "SPEED WINNER!";
                 document.getElementById('resultTitle').className = 'result-title win-text';
-                document.getElementById('resultSub').textContent = 'Top 5 fastest — ₹5 auto-credited to wallet!';
+                document.getElementById('resultSub').textContent = '⚡ Speed Winner! Prize awarded at round end.';
                 document.getElementById('resultTime').style.color = 'var(--green)';
             }
             else if (data.in_lucky_pool && inPrizeWindow) {
@@ -2518,7 +2518,7 @@
                 document.getElementById('resultIcon').textContent = '🎲';
                 document.getElementById('resultTitle').textContent = 'In Lucky Draw!';
                 document.getElementById('resultTitle').className = 'result-title correct-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 — You\'re in the lucky draw for 5 more ₹5 prizes!';
+                document.getElementById('resultSub').textContent = '🎲 You\'re in the Lucky Draw! Results at round end.';
                 document.getElementById('resultTime').style.color = 'var(--green-dk)';
             }
             else if (allCorrect && inPrizeWindow) {
@@ -2526,7 +2526,7 @@
                 document.getElementById('resultIcon').textContent = '✅';
                 document.getElementById('resultTitle').textContent = 'All Correct!';
                 document.getElementById('resultTitle').className = 'result-title correct-text';
-                document.getElementById('resultSub').textContent = 'Solved 4/4 — You\'re in the lucky draw for 5 more ₹5 prizes!';
+                document.getElementById('resultSub').textContent = '🎲 You\'re in the Lucky Draw! Results at round end.';
                 document.getElementById('resultTime').style.color = 'var(--green-dk)';
             }
             else if (allCorrect && !inPrizeWindow) {
@@ -2687,13 +2687,12 @@
             const top10Title = document.getElementById('top10Title');
             const top10Sub = document.getElementById('top10Sub');
             if (data.is_current_winner && inPrizeWindow) {
-                const balText = data.wallet_balance != null ? ` Balance: ₹${data.wallet_balance}` : '';
-                top10Title.textContent = '⚡ ₹5 added to wallet!';
-                top10Sub.textContent = `Speed winner — auto-credited.${balText}`;
+                top10Title.textContent = '⚡ Speed Winner! Prize awarded at round end.';
+                top10Sub.textContent = 'Top 5 fastest — results announced when round ends.';
                 top10Notif.style.display = 'block';
             } else if (data.in_lucky_pool && inPrizeWindow) {
                 top10Title.textContent = '🎲 You\'re in the Lucky Draw!';
-                top10Sub.textContent = '5 random winners drawn after the round ends. Good luck!';
+                top10Sub.textContent = 'Results at round end. Good luck!';
                 top10Notif.style.display = 'block';
                 top10Notif.style.background = 'var(--orange-lt)';
                 top10Notif.style.borderColor = 'var(--orange)';
@@ -2706,10 +2705,7 @@
             buildCTA('appCTA');
             buildRoundLeaderboard(data.leaderboard);
 
-            // Reload wallet if user won
-            if (data.is_current_winner || allCorrect) {
-                loadWallet();
-            }
+            // Wallet balance updates at round end, not on submit
 
             if (tg?.HapticFeedback) {
                 if (data.is_current_winner) tg.HapticFeedback.notificationOccurred('success');
