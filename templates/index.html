@@ -1937,6 +1937,8 @@
         const APP_STATUS = '{{ app_status }}', PLAYSTORE_LINK = '{{ playstore_link }}';
         let currentRound = null, stopwatchInterval = null, stopwatchStart = null, roundTimerInterval = null, hasAttempted = false;
         let userAnswers = [null, null, null, null];  // Track answers for 4 questions
+        let questionTimes = [null, null, null, null];  // Track when each question was answered (ms since quiz start)
+        let quizStartTime = null;  // Date.now() when quiz starts
         let submitCountdownInterval = null, submitTimeRemaining = 60;  // 60 second countdown timer
         const API = '';
 
@@ -2244,6 +2246,7 @@
                 currentRound = data;
                 hasAttempted = false;
                 userAnswers = [null, null, null, null];
+                questionTimes = [null, null, null, null];
 
                 document.getElementById('statAttempts').textContent = data.stats.attempts;
                 document.getElementById('statFastest').textContent = data.stats.fastest_time_ms ? (data.stats.fastest_time_ms / 1000).toFixed(1) + 's' : '--';
@@ -2295,7 +2298,7 @@
         }
 
         function startStopwatch() {
-            stopwatchStart = performance.now(); clearInterval(stopwatchInterval);
+            stopwatchStart = performance.now(); quizStartTime = Date.now(); clearInterval(stopwatchInterval);
             stopwatchInterval = setInterval(() => { document.getElementById('stopwatch').textContent = ((performance.now() - stopwatchStart) / 1000).toFixed(2) }, 50)
         }
         function stopStopwatch() { clearInterval(stopwatchInterval); return Math.round(performance.now() - stopwatchStart) }
@@ -2398,8 +2401,9 @@
             btn.style.background = 'var(--blue-lt)';
             btn.style.borderColor = 'var(--blue)';
 
-            // Store the answer
+            // Store the answer and record timing
             userAnswers[questionIdx] = answer;
+            questionTimes[questionIdx] = Date.now() - quizStartTime;
 
             // Mark question block as answered
             questionBlock.classList.add('answered');
@@ -2433,6 +2437,7 @@
                     user_id: userId,
                     user_name: userName,
                     answers: userAnswers,
+                    question_times: questionTimes,
                     time_ms: tms,
                     init_data: initData
                 };
@@ -2454,6 +2459,12 @@
                 }
 
                 const data = await res.json();
+
+                // Check for disqualification
+                if (data.disqualified) {
+                    showDisqualified(data.reason);
+                    return;
+                }
 
                 // During prize window, don't reveal which answers were correct/wrong
                 // to prevent multi-account cheating
@@ -2709,6 +2720,28 @@
             showScreen('resultScreen');
         }
 
+        function showDisqualified(reason) {
+            const card = document.getElementById('resultCard');
+            card.className = 'result-card wrong';
+            card.style.background = '#fee2e2';
+            card.style.borderColor = '#ef4444';
+            card.style.boxShadow = '0 4px 0 #dc2626';
+            document.getElementById('resultIcon').textContent = '\u26A0\uFE0F';
+            document.getElementById('resultTitle').textContent = 'Disqualified';
+            document.getElementById('resultTitle').className = 'result-title wrong-text';
+            document.getElementById('resultSub').innerHTML = 'Suspicious activity detected.<br>Each question needs minimum reading time.<br><strong>Play fair next round.</strong>';
+            document.getElementById('resultTime').textContent = '--';
+            document.getElementById('resultTime').style.color = 'var(--red)';
+            document.getElementById('top10Notification').style.display = 'none';
+            document.getElementById('explanationCard').style.display = 'none';
+            document.getElementById('roundLeaderboard').innerHTML = '';
+            document.getElementById('questionsReviewContainer').innerHTML = '';
+            document.getElementById('challengeFriendBtn').style.display = 'none';
+            document.getElementById('shareChallengeBtn').style.display = 'none';
+            document.getElementById('challengeResultContainer').style.display = 'none';
+            showScreen('resultScreen');
+        }
+
         function showAlreadyAttempted() {
             const card = document.getElementById('resultCard'); card.className = 'result-card';
             document.getElementById('resultIcon').textContent = '⏰'; document.getElementById('resultTitle').textContent = 'Already Played';
@@ -2851,6 +2884,7 @@
         // ─── PRACTICE MODE FUNCTIONS ─────────────────────
         let practiceRoundData = null;
         let practiceAnswers = [null, null, null, null];
+        let practiceQuestionTimes = [null, null, null, null];
         let practiceStopwatchStart = null;
         let practiceStopwatchInterval = null;
 
@@ -2898,6 +2932,7 @@
 
                 practiceRoundData = data;
                 practiceAnswers = [null, null, null, null];
+                practiceQuestionTimes = [null, null, null, null];
 
                 document.getElementById('practiceRoundNumber').textContent = roundId;
 
@@ -2948,6 +2983,7 @@
 
         function selectPracticeAnswer(questionIndex, answer) {
             practiceAnswers[questionIndex] = answer;
+            practiceQuestionTimes[questionIndex] = Date.now() - practiceStopwatchStart;
 
             // Update UI
             const block = document.getElementById(`practice-q-${questionIndex}`);
@@ -2988,6 +3024,7 @@
                     body: JSON.stringify({
                         round_id: practiceRoundData.round_id,
                         answers: practiceAnswers,
+                        question_times: practiceQuestionTimes,
                         time_ms: timeMs
                     })
                 });
@@ -3551,8 +3588,7 @@
 
             function isQuizActive() {
                 var qz = document.getElementById('quizScreen');
-                var pq = document.getElementById('practiceQuizScreen');
-                return (qz && qz.classList.contains('active')) || (pq && pq.classList.contains('active'));
+                return (qz && qz.classList.contains('active'));
             }
 
             function stopBlurTimer() {

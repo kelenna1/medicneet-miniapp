@@ -117,7 +117,14 @@ def init_db():
             status TEXT DEFAULT 'pending',
             chain_parent_id INTEGER,
             created_at TEXT,
-            completed_at TEXT)"""
+            completed_at TEXT)""",
+        """CREATE TABLE IF NOT EXISTS disqualifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            user_name TEXT,
+            round_id INTEGER NOT NULL,
+            question_times TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP)"""
     ]:
         c.execute(sql)
     # Migrate: add chain_parent_id to challenges if missing (for existing DBs)
@@ -538,6 +545,7 @@ async def api_submit(request: Request):
     un = data.get("user_name", "Anon")
     answers = data.get("answers", [])  # Array of 4 answers
     tms = int(data.get("time_ms", 0))
+    question_times = data.get("question_times", [])  # Per-question timing array
     challenge_code = data.get("challenge_code", "")
 
     # Validate input
@@ -601,10 +609,36 @@ async def api_submit(request: Request):
             results.append(False)
             all_correct = False
 
+    # Check for suspicious answer speed (auto-disqualification)
+    # Only disqualify if ALL correct (4/4) AND any gap between consecutive answers < 3 seconds
+    disqualified = False
+    if all_correct and isinstance(question_times, list) and len(question_times) == 4:
+        try:
+            qt = [int(t) if t is not None else 0 for t in question_times]
+            # Calculate gaps: gap1 = q1_time, gap2 = q2_time - q1_time, etc.
+            gaps = [qt[0]]
+            for i in range(1, 4):
+                gaps.append(qt[i] - qt[i - 1])
+            if any(g < 3000 for g in gaps):
+                disqualified = True
+                logger.info(f"DISQUALIFIED user {uid} ({un}) in round {rid}: gaps={gaps}, question_times={qt}")
+        except (ValueError, TypeError):
+            pass
+
     # Store attempt with all answers as JSON
     ic = 1 if all_correct else 0
+    if disqualified:
+        ic = 0  # Mark as incorrect for disqualified users
     c.execute("INSERT INTO attempts (round_id,user_id,user_name,selected_answers,is_correct,time_ms) VALUES (?,?,?,?,?,?)",
               (rid, uid, un, json.dumps(answers), ic, tms))
+
+    # Log disqualification
+    if disqualified:
+        c.execute("INSERT INTO disqualifications (user_id, user_name, round_id, question_times, created_at) VALUES (?,?,?,?,?)",
+                  (uid, un, rid, json.dumps(question_times), datetime.utcnow().isoformat()))
+        conn.commit()
+        conn.close()
+        return {"disqualified": True, "reason": "Suspicious answer speed detected. Each question requires minimum reading time."}
 
     iw = False
     in_lucky_pool = False
