@@ -1489,10 +1489,65 @@
             -ms-user-select: text;
             -webkit-touch-callout: default;
         }
+
+        /* Anti-screenshot watermark overlay */
+        #watermarkOverlay {
+            display: none;
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            z-index: 9999;
+            pointer-events: none;
+            transform: rotate(-30deg);
+            opacity: 0.06;
+            overflow: hidden;
+        }
+
+        #watermarkOverlay.active {
+            display: block;
+        }
+
+        .watermark-text {
+            font-size: 16px;
+            font-weight: 900;
+            font-family: 'Nunito', sans-serif;
+            color: var(--txt);
+            white-space: nowrap;
+            padding: 30px 50px;
+            display: inline-block;
+        }
+
+        .watermark-row {
+            white-space: nowrap;
+            line-height: 1;
+        }
+
+        /* Blur overlay on focus loss */
+        #blurOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9998;
+            pointer-events: none;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.3);
+        }
+
+        #blurOverlay.active {
+            display: block;
+        }
     </style>
 </head>
 
 <body>
+    <div id="watermarkOverlay"></div>
+    <div id="blurOverlay"></div>
     <div class="header">
         <div class="logo">
             <div class="logo-icon">🦉</div>
@@ -1874,6 +1929,37 @@
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && ['c','a','u','s','p'].includes(e.key.toLowerCase())) e.preventDefault(); });
         const user = tg?.initDataUnsafe?.user || { id: 'test_' + Date.now(), first_name: 'Test' };
+
+        /* Anti-screenshot watermark */
+        function buildWatermark() {
+            const overlay = document.getElementById('watermarkOverlay');
+            const label = (user.first_name || '') + ' ' + (user.last_name || '') + ' ' + user.id;
+            let html = '';
+            for (let r = 0; r < 30; r++) {
+                html += '<div class="watermark-row">';
+                for (let c = 0; c < 12; c++) {
+                    html += '<span class="watermark-text">' + label.replace(/\x3c/g, '&lt;') + '</span>';
+                }
+                html += '</div>';
+            }
+            overlay.innerHTML = html;
+        }
+        function showWatermark() { document.getElementById('watermarkOverlay').classList.add('active'); }
+        function hideWatermark() { document.getElementById('watermarkOverlay').classList.remove('active'); }
+
+        /* Blur on focus loss during active quiz */
+        let blurTimeout = null;
+        document.addEventListener('visibilitychange', function() {
+            const quizActive = document.getElementById('quizScreen')?.classList.contains('active') ||
+                               document.getElementById('practiceQuizScreen')?.classList.contains('active');
+            const overlay = document.getElementById('blurOverlay');
+            if (document.hidden && quizActive) {
+                clearTimeout(blurTimeout);
+                overlay.classList.add('active');
+            } else if (!document.hidden && overlay.classList.contains('active')) {
+                blurTimeout = setTimeout(function() { overlay.classList.remove('active'); }, 2000);
+            }
+        });
         const userId = String(user.id), userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Anonymous', initData = tg?.initData || '';
         const APP_STATUS = '{{ app_status }}', PLAYSTORE_LINK = '{{ playstore_link }}';
         let currentRound = null, stopwatchInterval = null, stopwatchStart = null, roundTimerInterval = null, hasAttempted = false;
@@ -2053,7 +2139,7 @@
             } catch (e) { btn.disabled = false; btn.textContent = 'Notify Me' }
         }
 
-        function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id)?.classList.add('active') }
+        function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id)?.classList.add('active'); if (id === 'quizScreen' || id === 'practiceQuizScreen') showWatermark(); else hideWatermark(); }
         function switchTab(tab) {
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             if (event && event.currentTarget) event.currentTarget.classList.add('active');
@@ -3479,6 +3565,7 @@
             }
         }
 
+        buildWatermark();
         loadCurrentRound();
         loadWallet();
         checkChallengeNotifications();
