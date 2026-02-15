@@ -631,7 +631,8 @@ async def api_submit(request: Request):
             all_correct = False
 
     # Check for suspicious answer speed (auto-disqualification)
-    # Only disqualify if ALL correct (4/4) AND any gap between consecutive answers < 3 seconds
+    # Only disqualify if ALL correct (4/4) AND at least 2 positive gaps < 3 seconds
+    # Negative gaps are skipped (they occur when a user revisits a previous question)
     disqualified = False
     if all_correct and isinstance(question_times, list) and len(question_times) == 4:
         try:
@@ -640,7 +641,7 @@ async def api_submit(request: Request):
             gaps = []
             for i in range(1, 4):
                 gaps.append(qt[i] - qt[i - 1])
-            if any(g < 3000 for g in gaps):
+            if sum(1 for g in gaps if 0 < g < 3000) >= 2:
                 disqualified = True
                 logger.info(f"DISQUALIFIED user {uid} ({un}) in round {rid}: gaps={gaps}, question_times={qt}")
         except (ValueError, TypeError):
